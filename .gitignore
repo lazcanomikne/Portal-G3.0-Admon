@@ -1,0 +1,30 @@
+# MS Build / Visual Studio
+bin/
+obj/
+publish/
+*.exe
+*.dll
+*.pdb
+*.suo
+*.user
+*.sln.docstates
+
+# Node / Vue
+node_modules/
+dist/
+.DS_Store
+*.log
+
+# Environment variables
+.env
+.env.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Project specific
+temp/
+!**/Brain/

@@ -1,0 +1,22 @@
+.v-btn-group .v-btn {
+    height: inherit !important;
+}
+
+.v-btn-group {
+    border-color: rgb(var(--v-theme-borderColor)) !important;
+}
+.v-btn{
+    text-transform: capitalize;
+    letter-spacing: 0;
+    border-radius: 30px;
+
+    &.v-btn--variant-elevated{
+        box-shadow: none !important;
+    }
+    .v-btn--slim{
+        padding: 0 15px;
+    }
+}
+.v-btn--elevated:hover{
+    box-shadow: none;
+}
