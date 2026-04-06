@@ -1,0 +1,317 @@
+<template>
+  <v-container fluid class="pa-4 mt-4">
+
+    <v-toolbar dense class="mb-4">
+      <v-toolbar-title>
+        Analisis Cuadro de Inversion
+      </v-toolbar-title>
+      <v-spacer></v-spacer>
+      
+      <export-excel
+        v-if="items.length"
+        :data="items"
+        worksheet="Analisis"
+        :name="`Analisis_${fecha}.xls`"
+        class="mr-2"
+      >
+        <v-btn color="success" small depressed>
+          <v-icon left>mdi-file-excel</v-icon>
+          Exportar
+        </v-btn>
+      </export-excel>
+
+      <v-btn 
+        color="info" 
+        small 
+        depressed 
+        @click="getReportHeaderMethodCuadroInversion" 
+        :loading="loading"
+      >
+        <v-icon left>mdi-refresh</v-icon>
+        Actualizar
+      </v-btn>
+    </v-toolbar>
+
+    <v-card class="mb-4">
+      <v-card-text class="pt-4">
+        <v-row dense class="mb-4 align-center">
+          <v-col cols="12" sm="6" md="3">
+            <v-text-field 
+              v-model="fecha" 
+              label="Fecha de Corte" 
+              prepend-inner-icon="event" 
+              type="date" 
+              outlined 
+              dense
+              hide-details
+              @input="getReportHeaderMethodCuadroInversion"
+            ></v-text-field>
+          </v-col>
+          
+          <v-col cols="12" sm="6" md="3">
+            <v-text-field 
+              v-model="tipoCambio" 
+              label="Tipo de Cambio" 
+              prepend-inner-icon="mdi-cash-multiple" 
+              type="number" 
+              outlined
+              dense
+              hide-details
+            ></v-text-field>
+          </v-col>
+
+          <v-col cols="12" sm="12" md="6">
+            <v-text-field 
+              label="Buscar en cuentas..." 
+              prepend-inner-icon="search" 
+              v-model="search"
+              outlined
+              dense
+              hide-details
+              clearable
+            ></v-text-field>
+          </v-col>
+        </v-row>
+
+
+      </v-card-text>
+    </v-card>
+
+    <v-card>
+      <v-skeleton-loader v-if="loading && items.length === 0" type="table" class="ma-4"></v-skeleton-loader>
+      
+      <v-data-table 
+        v-else 
+        :headers="headers" 
+        :items="items" 
+        class="elevation-1 sticky-columns" 
+        item-key="cuentas"
+          :loading="loadingDetail" 
+          :search="search" 
+          :single-expand="singleExpand" 
+          :expanded.sync="expanded" 
+          show-expand
+          fixed-header
+          height="600px"
+          dense
+          @item-expanded="onItemExpanded"
+          :items-per-page="50"
+          :footer-props="{
+            'items-per-page-options': [50, 100, -1]
+          }"
+        >
+          <template v-for="col in moneyColumns" v-slot:[`item.${col}`]="{ item }">
+             <span :key="col" :class="getColor(item[col])">
+               {{ item[col] | currency }}
+             </span>
+          </template>
+
+
+
+          <template v-slot:expanded-item="{ headers, item }">
+            <td :colspan="headers.length" class="pa-4 grey lighten-4">
+              <v-card flat outlined>
+                <v-card-title class="subtitle-2 py-2 grey lighten-3">
+                  Detalle de cuenta: {{ item.cuentas }}
+                </v-card-title>
+                <v-data-table 
+                  dense 
+                  :headers="headersDetails" 
+                  :items="itemsDetails" 
+                  hide-default-footer 
+                  disable-pagination
+                  disable-sort 
+                  class="glass-table elevation-0" 
+                  item-key="factura" 
+                  :loading="loadingDetail"
+                >
+                  <template v-for="col in moneyDetailsColumns" v-slot:[`item.${col}`]="{ item }">
+                      {{ item[col] | currency }}
+                   </template>
+
+                  <template v-slot:[`item.totalPago`]="{ item }">
+                    <v-chip color="blue darken-2" dark x-small label>
+                      {{ item.totalPago | currency }}
+                    </v-chip>
+                  </template>
+                </v-data-table>
+              </v-card>
+            </td>
+          </template>
+        </v-data-table>
+
+      </v-card>
+  </v-container>
+</template>
+
+<script>
+import moment from "moment";
+import { mapActions } from "vuex";
+
+export default {
+  name: "AnalisisCuadroInversion",
+  data: () => ({
+    loading: false,
+    singleExpand: true, // Cambiado a true para evitar saturacion visual
+    loadingDetail: false,
+    expanded: [],
+    fecha: moment().format("YYYY-MM-DD"),
+    tipoCambio: 0,
+    items: [],
+    itemsDetails: [],
+    search: "",
+    // Lista de columnas que requieren formato moneda en la tabla padre
+    moneyColumns: [
+      "saldoDiario", "compra", "venta", "actualChequera", "saldoInversion",
+      "totalBanorte", "depositos", "depositosVenta", "transferencias",
+      "depositosMes", "chequeMes", "dolaresTCDia", "dolaresTCDiario",
+      "granTotal", "banorte", "banamex", "santander"
+    ],
+    // Lista de columnas que requieren formato moneda en la subtabla
+    moneyDetailsColumns: [
+      "saldoVencido", "descuento1", "descuento2", "descuento3", "descuento4"
+    ],
+    headers: [
+      { text: "Almacen", value: "almacen", width: "110px", fixed: true, class: "primary lighten-5" }, 
+      { text: "Cuentas", value: "cuentas", width: "150px", fixed: true, class: "primary lighten-5" },
+      { text: "Saldo Diario", value: "saldoDiario", align: "right", width: "130px" },
+      { text: "Compra", value: "compra", align: "right", width: "110px" },
+      { text: "Venta", value: "venta", align: "right", width: "110px" },
+      { text: "Actual Chequera", value: "actualChequera", align: "right", width: "130px" },
+      { text: "Saldo Inversion", value: "saldoInversion", align: "right", width: "130px" },
+      { text: "Total Banorte", value: "totalBanorte", align: "right", width: "130px" },
+      { text: "Depositos", value: "depositos", align: "right", width: "110px" },
+      { text: "Depositos Venta", value: "depositosVenta", align: "right", width: "130px" },
+      { text: "Transferencias", value: "transferencias", align: "right", width: "120px" },
+      { text: "Depositos Mes", value: "depositosMes", align: "right", width: "120px" },
+      { text: "Cheque Mes", value: "chequeMes", align: "right", width: "120px" },
+      { text: "Dolares TC Dia", value: "dolaresTCDia", align: "right", width: "130px" },
+      { text: "Dolares TC Diario", value: "dolaresTCDiario", align: "right", width: "140px" },
+      { text: "Gran Total", value: "granTotal", align: "right", width: "130px", class: "font-weight-bold" },
+      { text: "Banorte", value: "banorte", align: "right", width: "110px" },
+      { text: "Banamex", value: "banamex", align: "right", width: "110px" },
+      { text: "Santander", value: "santander", align: "right", width: "110px" },
+      { text: "", value: "data-table-expand" },
+    ],
+    headersDetails: [
+      { text: "Factura", value: "factura" },
+      { text: "Saldo Vencido", value: "saldoVencido", align: "right" },
+      { text: "Desc 1", value: "descuento1", align: "right" },
+      { text: "Desc 2", value: "descuento2", align: "right" },
+      { text: "Desc 3", value: "descuento3", align: "right" },
+      { text: "Desc 4", value: "descuento4", align: "right" },
+      { text: "Total Pago", value: "totalPago", align: "right" },
+    ],
+  }),
+  filters: {
+    currency(value) {
+      if (!value && value !== 0) return "-";
+      return new Intl.NumberFormat("es-MX", {
+        style: "currency",
+        currency: "MXN",
+      }).format(value);
+    }
+  },
+  methods: {
+    ...mapActions("credito", ["getReportHeaderCuadroInversion", "getReportDetailCuadroInversion"]),
+    
+    getColor(val) {
+        return val < 0 ? 'red--text font-weight-bold' : '';
+    },
+
+    async getReportHeaderMethodCuadroInversion() {
+      this.loading = true;
+      try {
+          this.items = await this.getReportHeaderCuadroInversion(this.fecha);
+      } catch (e) {
+          console.error(e);
+      } finally {
+          this.loading = false;
+      }
+    },
+    async onItemExpanded({ item, value }) {
+      if (value) {
+        this.loadingDetail = true;
+        try {
+            this.itemsDetails = await this.getReportDetailCuadroInversion(item.cuentas);
+        } catch(e) {
+            this.itemsDetails = [];
+        } finally {
+            this.loadingDetail = false;
+        }
+        return;
+      }
+      this.itemsDetails = [];
+    },
+  },
+  mounted() {
+    this.getReportHeaderMethodCuadroInversion();
+  },
+};
+</script>
+
+<style scoped>
+/* --- LOGICA PARA COLUMNAS FIJAS (STICKY) EN VUETIFY 2 --- */
+
+/* --- LOGICA PARA COLUMNAS FIJAS (STICKY) EN VUETIFY 2 --- */
+
+/* Permitir que los textos de los headers se rompan en dos líneas y se alineen arriba */
+.v-data-table thead th {
+  white-space: normal !important;
+  vertical-align: top !important;
+  padding-top: 12px !important;
+  line-height: 1.2 !important;
+}
+
+/* 1. Primera Columna (Almacen) */
+.sticky-columns >>> table > thead > tr > th:nth-child(1),
+.sticky-columns >>> table > tbody > tr > td:nth-child(1) {
+  position: sticky !important; 
+  left: 0;
+  z-index: 3;
+  background: var(--v-surface-base, white); /* Fallback to white if variable undefined */
+  border-right: 1px solid #ccc;
+  width: 110px; /* Synchronized with JS header */
+}
+
+/* Dark mode override for first column background - Elegant Dark Grey */
+.theme--dark .sticky-columns >>> table > tbody > tr > td:nth-child(1) {
+    background: #333333 !important; 
+}
+
+/* 2. Segunda Columna (Cuentas) */
+.sticky-columns >>> table > thead > tr > th:nth-child(2),
+.sticky-columns >>> table > tbody > tr > td:nth-child(2) {
+  position: sticky !important; 
+  left: 110px; /* Debe ser igual al width de col 1 */
+  z-index: 3;
+  background: var(--v-surface-base, white);
+  border-right: 2px solid #999; 
+  width: 150px; /* Synchronized with JS header */
+}
+
+/* Dark mode override for second column background - Elegant Dark Grey */
+.theme--dark .sticky-columns >>> table > tbody > tr > td:nth-child(2) {
+    background: #333333 !important; 
+}
+
+/* Ajuste para headers fijos cuando se hace scroll vertical */
+.sticky-columns >>> table > thead > tr > th:nth-child(1),
+.sticky-columns >>> table > thead > tr > th:nth-child(2) {
+    position: sticky !important; /* Reinforce sticky for headers */
+    z-index: 10 !important; /* Header por encima del contenido y otros headers */
+    background-color: #ECEFF1; /* primary lighten-5 aprox */
+}
+
+.theme--dark .sticky-columns >>> table > thead > tr > th:nth-child(1),
+.theme--dark .sticky-columns >>> table > thead > tr > th:nth-child(2) {
+    background-color: #333333 !important; /* Header dark background match */
+    color: var(--govi-naranja) !important;
+}
+
+/* Hover effect */
+.sticky-columns >>> tbody tr:hover td:nth-child(1),
+.sticky-columns >>> tbody tr:hover td:nth-child(2) {
+    background-color: #e3f2fd !important;
+}
+</style>

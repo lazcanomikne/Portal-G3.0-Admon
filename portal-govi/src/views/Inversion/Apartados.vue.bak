@@ -1,0 +1,433 @@
+<template>
+  <v-container fluid class="pa-4 mt-4">
+    <v-toolbar dense class="mb-4">
+      <v-toolbar-title>Apartados</v-toolbar-title>
+      <v-spacer> </v-spacer>
+      <v-btn depressed class="mr-2" :disabled="!selectedFile" @click="procesarArchivoExcel">
+        Subir Excel
+      </v-btn>
+      <v-btn depressed class="mr-2" @click="abrirModal">
+        Agregar Manual
+      </v-btn>
+    </v-toolbar>
+
+    <!-- Filters Card -->
+    <v-card class="mb-4">
+      <v-card-text>
+        <v-row class="align-center">
+          <v-col cols="12" md="3">
+            <v-text-field v-model="fecha" label="Fecha" prepend-inner-icon="event" type="date"
+              outlined dense hide-details @input="cargarDatos"></v-text-field>
+          </v-col>
+          <v-col cols="12" md="6">
+            <v-file-input v-model="selectedFile" label="Buscar archivo" outlined dense
+              prepend-inner-icon="mdi-file-excel" hide-details show-size></v-file-input>
+          </v-col>
+          <v-col cols="12" md="3">
+            <v-text-field v-model="search" append-icon="search" label="Filtrar" hide-details outlined dense></v-text-field>
+          </v-col>
+        </v-row>
+      </v-card-text>
+    </v-card>
+
+    <!-- Table Card -->
+    <v-card>
+      <v-data-table
+        :headers="headers"
+        :items="items"
+        :search="search"
+        :loading="loading"
+        dense
+        fixed-header
+        item-key="id"
+        height="500px"
+        no-data-text="No hay apartados para la fecha seleccionada"
+      >
+        <template v-slot:item.linea="{ index }">
+          {{ index + 1 }}
+        </template>
+
+        <template v-slot:item.montoApartar="{ item }">
+          <span class="font-weight-bold blue--text text--darken-2">
+            {{ item.montoApartar | currency }}
+          </span>
+        </template>
+
+        <template v-slot:item.fecha="{ item }">
+           {{ item.fecha | formatDate }}
+        </template>
+
+        <template v-slot:item.acciones="{ item }">
+          <v-tooltip bottom>
+            <template v-slot:activator="{ on, attrs }">
+              <v-btn icon small color="primary" @click="editarItem(item)" v-bind="attrs" v-on="on" class="mr-2">
+                 <v-icon>edit</v-icon>
+              </v-btn>
+            </template>
+            <span>Editar línea</span>
+          </v-tooltip>
+
+          <v-tooltip bottom>
+            <template v-slot:activator="{ on, attrs }">
+               <v-btn icon small color="error" @click="confirmarBorrarItem(item)" v-bind="attrs" v-on="on">
+                  <v-icon>delete</v-icon>
+               </v-btn>
+            </template>
+            <span>Eliminar línea</span>
+          </v-tooltip>
+        </template>
+      </v-data-table>
+    </v-card>
+
+    <!-- Modal Nuevo / Editar -->
+    <v-dialog v-model="dialog" max-width="500px" persistent>
+      <v-card>
+        <v-card-title class="headline primary white--text">
+          <span>{{ formTitle }}</span>
+        </v-card-title>
+        <v-card-text class="pt-4">
+          <v-form ref="form" v-model="validForm">
+            <v-row dense>
+              <v-col cols="12">
+                <v-autocomplete
+                  v-model="editedItem.cuenta"
+                  label="Cuenta"
+                  :items="listaCuentas" 
+                  item-text="display"
+                  item-value="cuenta"
+                  outlined
+                  dense
+                  required
+                  :rules="[v => !!v || 'La cuenta es requerida']"
+                  return-object
+                ></v-autocomplete>
+              </v-col>
+              <v-col cols="12">
+                <v-text-field
+                  v-model.number="editedItem.montoApartar"
+                  label="Monto"
+                  prefix="$"
+                  type="number"
+                  outlined
+                  dense
+                  required
+                  :rules="[v => !!v || 'El monto es requerido']"
+                ></v-text-field>
+              </v-col>
+              <v-col cols="12">
+                <v-text-field
+                  v-model="editedItem.fecha"
+                  label="Fecha"
+                  type="date"
+                  outlined
+                  dense
+                  required
+                  :rules="[v => !!v || 'La fecha es requerida']"
+                ></v-text-field>
+              </v-col>
+            </v-row>
+          </v-form>
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer></v-spacer>
+          <v-btn color="grey darken-1" text @click="cerrarModal">Cancelar</v-btn>
+          <v-btn color="primary" depressed :disabled="!validForm" @click="guardar">Guardar</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <v-dialog v-model="dialogDelete" max-width="400px">
+      <v-card>
+        <v-card-title class="headline">¿Eliminar registro?</v-card-title>
+        <v-card-text>
+          Estás a punto de eliminar el apartado de la cuenta <b>{{ itemToDelete.cuenta }}</b>. Esta acción no se puede deshacer.
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer></v-spacer>
+          <v-btn color="grey darken-1" text @click="dialogDelete = false">Cancelar</v-btn>
+          <v-btn color="error" depressed @click="borrarItemConfirmado">Eliminar</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <v-overlay :value="overlay">
+      <div class="text-center white--text">
+        <v-progress-circular indeterminate size="64" color="white"></v-progress-circular>
+        <p class="mt-2">Procesando solicitud...</p>
+      </div>
+    </v-overlay>
+
+    <v-snackbar v-model="snackbar.show" :color="snackbar.color" top right>
+      {{ snackbar.text }}
+      <template v-slot:action="{ attrs }">
+        <v-btn text v-bind="attrs" @click="snackbar.show = false">Cerrar</v-btn>
+      </template>
+    </v-snackbar>
+  </v-container>
+</template>
+
+<script>
+import moment from "moment";
+import { mapActions, mapState } from "vuex";
+import xlsx from "xlsx";
+
+export default {
+  name: "Apartados",
+  data: () => ({
+    fecha: moment().format("YYYY-MM-DD"),
+    items: [],
+    loading: false,
+    overlay: false,
+    selectedFile: null,
+    
+    // Lista de Cuentas (Debe llenarse con API o hardcode temporal)
+    listaCuentas: [], 
+
+    // Configuración Modal Edición/Creación
+    dialog: false,
+    dialogDelete: false,
+    validForm: false,
+    editedIndex: -1, // -1 significa Nuevo, >= 0 significa Editar
+    editedItem: {
+      id: 0,
+      cuenta: null, // Ahora será un objeto al seleccionar, pero enviaremos string
+      montoApartar: 0,
+      fecha: moment().format("YYYY-MM-DD")
+    },
+    defaultItem: {
+      id: 0,
+      cuenta: null,
+      montoApartar: 0,
+      fecha: moment().format("YYYY-MM-DD")
+    },
+    itemToDelete: {},
+
+    headers: [
+      { text: "#", value: "linea", width: "50px", align: "center", sortable: false },
+      { text: "Cuenta", value: "cuenta" },
+      { text: "Monto Apartar", value: "montoApartar", align: "end" },
+      { text: "Fecha", value: "fecha", align: "center" },
+      { text: "Acciones", value: "acciones", sortable: false, width: "100px", align: "center" },
+    ],
+    
+    snackbar: { show: false, text: '', color: 'success' }
+  }),
+  
+  filters: {
+    currency(value) {
+      if (!value) return "$0.00";
+      return new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" }).format(value);
+    },
+    formatDate(value) {
+      if (!value) return "";
+      return moment(value).format("DD/MM/YYYY");
+    }
+  },
+
+  computed: {
+    ...mapState("login", ["userName"]),
+    formTitle() {
+      return this.editedIndex === -1 ? 'Nuevo Apartado' : 'Editar Apartado';
+    },
+  },
+
+  mounted() {
+    this.cargarDatos();
+    this.cargarCatalogoCuentas();
+  },
+
+  methods: {
+    ...mapActions("inversion", [
+      "getApartados", 
+      "postApartado", 
+      "updateApartado", 
+      "deleteApartado", 
+      "postApartadosExcel",
+      "getCuentas" // Nueva acción
+    ]),
+
+    cargarCatalogoCuentas() {
+      this.getCuentas().then(res => {
+         // Formateamos para el autocomplete
+         this.listaCuentas = res.map(x => ({
+           almacen: x.almacen,
+           cuenta: x.cuenta,
+           display: `${x.almacen} - ${x.cuenta}`
+         }));
+      });
+    },
+
+    cargarDatos() {
+      this.loading = true;
+      this.getApartados(this.fecha)
+        .then(res => {
+          this.items = res || [];
+        })
+        .catch(err => console.error(err))
+        .finally(() => this.loading = false);
+    },
+
+    descargarTemplate() {
+      const ws = xlsx.utils.aoa_to_sheet([["Cuenta", "Monto"]]);
+      const wb = xlsx.utils.book_new();
+      xlsx.utils.book_append_sheet(wb, ws, "Template");
+      xlsx.writeFile(wb, "Template_Apartados.xlsx");
+    },
+
+    // --- LOGICA MODAL NUEVO / EDITAR ---
+    abrirModal() {
+      // Reseteamos al item por defecto
+      this.editedItem = Object.assign({}, this.defaultItem);
+      this.editedItem.fecha = this.fecha; 
+      this.editedIndex = -1;
+      this.dialog = true;
+      this.$nextTick(() => {
+        this.$refs.form.resetValidation();
+      });
+    },
+
+    editarItem(item) {
+      this.editedIndex = this.items.indexOf(item);
+      this.editedItem = Object.assign({}, item);
+      // Para que el autocomplete lo reconozca, buscamos en la lista el que coincida con la cuenta
+      // Si no existe (ej: cuenta manual antigua), lo dejamos tal cual o creamos un objeto ad-hoc
+      // Asumimos que 'item.cuenta' es string. 
+      // El autocomplete con return-object espera un objeto si items son objetos.
+      const match = this.listaCuentas.find(c => c.cuenta === item.cuenta);
+      if (match) {
+         this.editedItem.cuenta = match;
+      } else {
+         // Fallback si no está en la lista: crear objeto temporal para visualización correcta
+         this.editedItem.cuenta = { cuenta: item.cuenta, display: item.cuenta }; 
+      }
+      
+      this.editedItem.fecha = moment(item.fecha).format("YYYY-MM-DD");
+      this.dialog = true;
+    },
+
+    cerrarModal() {
+      this.dialog = false;
+      this.$nextTick(() => {
+        this.editedItem = Object.assign({}, this.defaultItem);
+        this.editedIndex = -1;
+      });
+    },
+
+    guardar() {
+      if (!this.$refs.form.validate()) return;
+      
+      this.overlay = true;
+      // EXTRAER SOLO EL STRING 'CUENTA' DEL OBJETO SELECCIONADO
+      const cuentaValue = this.editedItem.cuenta.cuenta || this.editedItem.cuenta; 
+      
+      const payload = { 
+          ...this.editedItem,
+          cuenta: cuentaValue // Sobreescribimos con el string
+      }; 
+
+      if (this.editedIndex > -1) {
+        // --- EDICIÓN (PUT) ---
+        // Aseguramos que el ID vaya en una propiedad 'id' minúscula para que el store lo lea bien
+        payload.id = payload.id || payload.ID; 
+
+        this.updateApartado(payload)
+          .then(() => {
+            this.mostrarSnack("Registro actualizado", "success");
+            this.cargarDatos();
+            this.cerrarModal();
+          })
+          .catch(err => {
+            this.mostrarSnack("Error al actualizar", "error");
+            console.error(err);
+          })
+          .finally(() => this.overlay = false);
+      } else {
+        // --- NUEVO (POST) ---
+        this.postApartado(payload)
+          .then(() => {
+            this.mostrarSnack("Registro creado", "success");
+            this.cargarDatos();
+            this.cerrarModal();
+          })
+          .catch(err => {
+            this.mostrarSnack("Error al guardar", "error");
+            console.error(err);
+          })
+          .finally(() => this.overlay = false);
+      }
+    },
+
+    // --- LOGICA ELIMINAR ---
+    confirmarBorrarItem(item) {
+      this.itemToDelete = item;
+      this.dialogDelete = true;
+    },
+
+    borrarItemConfirmado() {
+      this.overlay = true;
+      const id = this.itemToDelete.id || this.itemToDelete.ID;
+      this.deleteApartado(id)
+        .then(() => {
+          this.mostrarSnack("Registro eliminado", "success");
+          this.cargarDatos();
+        })
+        .catch(err => {
+          this.mostrarSnack("Error al eliminar", "error");
+          console.error(err);
+        })
+        .finally(() => {
+          this.overlay = false;
+          this.dialogDelete = false;
+        });
+    },
+
+    // --- EXCEL ---
+    procesarArchivoExcel() {
+      if (!this.selectedFile) return;
+      this.overlay = true;
+      const fileReader = new FileReader();
+
+      fileReader.onload = (ev) => {
+        try {
+          const data = ev.target.result;
+          const workbook = xlsx.read(data, { type: "binary" });
+          const wsname = workbook.SheetNames[0];
+          const ws = xlsx.utils.sheet_to_json(workbook.Sheets[wsname]);
+
+          const detalle = ws.map(row => ({
+            Cuenta: row["Cuenta"] || row["cuenta"],
+            MontoApartar: row["Monto"] || row["monto"],
+            Fecha: this.fecha 
+          }));
+
+          if (detalle.length === 0) throw new Error("Archivo vacío");
+
+          this.postApartadosExcel(detalle)
+            .then(() => {
+              this.mostrarSnack("Carga masiva exitosa", "success");
+              this.selectedFile = null;
+              this.cargarDatos();
+            })
+            .catch(err => {
+              this.mostrarSnack("Error al procesar archivo", "error");
+              console.error(err);
+            });
+
+        } catch (e) {
+          this.mostrarSnack("Error leyendo el archivo Excel", "error");
+          console.error(e);
+        } finally {
+          this.overlay = false;
+        }
+      };
+      fileReader.readAsBinaryString(this.selectedFile);
+    },
+
+    mostrarSnack(text, color) {
+      this.snackbar = { show: true, text, color };
+    }
+  }
+};
+</script>
+
+

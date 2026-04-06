@@ -1,0 +1,244 @@
+<template>
+  <v-container>
+    <v-toolbar dense class="mb-4">
+      <v-toolbar-title>Saldo Disponible</v-toolbar-title>
+      <v-spacer> </v-spacer>
+      <v-btn depressed class="mr-2" :disabled="!selectedFile" @click="EnviarSap">
+        Enviar
+      </v-btn>
+      <v-btn v-if="id > 0" depressed color="error" class="mr-2" @click="BorrarRegistros">
+        Borrar
+      </v-btn>
+    </v-toolbar>
+    <!-- Filters Card -->
+    <v-card class="mb-4">
+      <v-card-text>
+        <v-row class="align-center">
+          <v-col cols="12" md="4">
+            <v-text-field v-model="fecha" label="Fecha" prepend-inner-icon="event" type="date"
+              outlined dense hide-details @input="OnLoadData"></v-text-field>
+          </v-col>
+          <v-col cols="12" md="8">
+            <v-file-input label="Buscar archivo" outlined dense @change="onFileChange"
+              prepend-inner-icon="mdi-file-excel" hide-details show-size v-model="selectedFile"></v-file-input>
+          </v-col>
+        </v-row>
+      </v-card-text>
+    </v-card>
+
+    <!-- Table Card -->
+    <v-card>
+      <v-data-table
+        :headers="columns"
+        :items="rows"
+        class="elevation-1"
+        :loading="overlay"
+        dense
+        fixed-header
+        disable-sort
+        style="max-height: 500px"
+        height="500px"
+        :items-per-page="50"
+        :footer-props="{
+          'items-per-page-options': [50, 100, -1]
+        }"
+      >
+        <template v-slot:no-data>
+          <div class="text-center pa-4">
+            <v-icon size="64" color="grey">mdi-database-off</v-icon>
+            <p class="text-h6 grey--text mt-2">No hay información disponible</p>
+          </div>
+        </template>
+        
+        <!-- Slot to format currency columns -->
+         <template v-for="col in ['SALDO ACTUAL', 'SALDO DISPONIBLE', 'SALDO RETENIDO']" v-slot:[`item.${col}`]="{ item }">
+              <span :key="col" class="font-weight-bold green--text text--lighten-1">
+                {{ item[col] | currency }}
+              </span>
+          </template>
+      </v-data-table>
+    </v-card>
+    <!--  -->
+    <v-dialog v-model="showAlert" persistent>
+      <v-card>
+        <v-card-title class="headline">
+          Proceso terminado con éxito
+        </v-card-title>
+        <v-card-actions>
+          <v-btn text color="primary" @click="
+            showAlert = false;
+          response = [];
+          ">Cerrar</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+    <v-overlay style="text-align: center" :value="overlay">
+      <p>Procesando archivo...</p>
+      <v-progress-circular indeterminate size="64"></v-progress-circular>
+    </v-overlay>
+  </v-container>
+</template>
+
+<script>
+import moment from "moment";
+import { mapActions, mapState } from "vuex";
+import xlsx from "xlsx";
+import { mixin } from "../../mixin";
+
+export default {
+  name: "SaldoDisponible",
+  data: () => ({
+    fecha: moment().format("YYYY-MM-DD"),
+    selectedFile: undefined,
+    overlay: false,
+    response: [],
+    showAlert: false,
+    id: 0
+  }),
+  mixins: [mixin],
+  filters: {
+    currency(value) {
+      if (!value && value !== 0) return "-";
+      // Determine if value is a string or number and process accordingly
+      const val = typeof value === 'string' ? parseFloat(value.replace(/[^0-9.-]+/g,"")) : value;
+      if (isNaN(val)) return value;
+      
+      return new Intl.NumberFormat("es-MX", {
+        style: "currency",
+        currency: "MXN",
+      }).format(val);
+    }
+  },
+  mounted () {
+    this.OnLoadData(this.fecha)
+  },
+  methods: {
+    ...mapActions("inversion", ["postSaldoDisponible", "getSaldoDisponible", "deleteSaldoDisponible"]),
+    EnviarSap () {
+      this.overlay = true;
+      const data = {
+        Fecha: this.fecha,
+        Archivo: this.selectedFile.name,
+        Usuario: this.userName,
+        Detalle: this.rows.map(item => {
+          return {
+            Fecha: this.fecha,
+            Clabe: item['CLABE'],
+            Cuenta: item['CUENTA'],
+            Moneda: item['MONEDA'],
+            SaldoActual: item['SALDO ACTUAL'],
+            SaldoDisponible: item['SALDO DISPONIBLE'],
+            SaldoRetenido: item['SALDO RETENIDO'],
+            Titular: item['TITULAR / PERSONALIZACIÓN'],
+          }
+        })
+      }
+      this.postSaldoDisponible(data)
+        .then((res) => {
+          if (res) {
+            this.overlay = false;
+            this.rows = [];
+            this.selectedFile = undefined;
+            this.response = res.data;
+            this.showAlert = true;
+          }
+        })
+        .catch((err) => {
+          this.overlay = false;
+          this.response = err.data;
+          alert(this.response);
+          console.error(err);
+        })
+        .finally(() => {
+          this.overlay = false;
+        });
+    },
+    onFileChange (event) {
+      if (!this.selectedFile) {
+        this.rows = [];
+        return;
+      }
+      if (!/\.(xls|xlsx)$/.test(this.selectedFile.name.toLowerCase())) {
+        return alert(
+          "The upload format is incorrect. Please upload xls or xlsx format"
+        );
+      }
+      const fileReader = new FileReader();
+      fileReader.onload = (ev) => {
+        try {
+          const data = ev.target.result;
+          const XLSX = xlsx;
+          const workbook = XLSX.read(data, {
+            type: "binary",
+          });
+          const wsname = workbook.SheetNames[0]; // Take the first sheet，wb.SheetNames[0] :Take the name of the first sheet in the sheets
+          const ws = XLSX.utils.sheet_to_json(workbook.Sheets[wsname]); // Generate JSON table content，wb.Sheets[Sheet名]    Get the data of the first sheet
+          const a = workbook.Sheets[workbook.SheetNames[0]];
+          const headers = this.getHeader(a);
+          this.setTable(headers, ws);
+        } catch (e) {
+          return alert("Read failure!");
+        }
+      };
+      fileReader.readAsBinaryString(this.selectedFile);
+    },
+    OnLoadData (fecha) {
+      this.overlay = true;
+      this.getSaldoDisponible(this.fecha)
+        .then((res) => {
+          if (res && res.length > 0) {
+            this.overlay = false;
+            this.id = res[0].iD_Encabezado
+            const columns = Object.keys(res[0]).map(k => {
+              return {
+                text: k.toUpperCase(),
+                value: k,
+              }
+            })
+            this.columns = columns
+            this.rows = res;
+          } else {
+            this.id = 0
+            this.overlay = false;
+            this.rows = [];
+            this.columns = []
+          }
+        })
+        .catch((err) => {
+          this.overlay = false;
+          alert(this.response);
+          console.error(err);
+        })
+        .finally(() => {
+          this.overlay = false;
+        });
+    },
+    BorrarRegistros () {
+      this.overlay = true;
+      this.deleteSaldoDisponible(this.id)
+        .then((res) => {
+          if (res) {
+            this.overlay = false;
+            this.rows = [];
+            this.columns = []
+          }
+        })
+        .catch((err) => {
+          this.overlay = false;
+          alert(this.response);
+          console.error(err);
+        })
+        .finally(() => {
+          this.overlay = false;
+        });
+    }
+  },
+  computed: {
+    ...mapState("login", ["userName"]),
+  }
+};
+</script>
+
+
+
+

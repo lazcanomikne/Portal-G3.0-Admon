@@ -1,0 +1,160 @@
+/* Global Glassmorphism Styles for Portal GOVI */
+
+:root {
+  --govi-naranja: #F8A102;
+  --govi-naranja-hover: #E09000;
+  --govi-gris-oscuro: #2C2C2C;
+  --govi-gris-claro: #F5F5F5;
+  --govi-blanco: #FFFFFF;
+}
+
+/* Base Glass Card with "Illumination/Relief" */
+.glass-toolbar {
+  background: rgba(44, 44, 44, 0.05) !important;
+  backdrop-filter: blur(10px) !important;
+  border-bottom: 2px solid var(--v-primary-base) !important;
+  color: var(--v-secondary-base) !important;
+  border-radius: 8px !important;
+}
+
+.theme--dark .glass-toolbar {
+  background: rgba(0, 0, 0, 0.2) !important;
+  color: white !important;
+}
+
+.glass-panel,
+.glass-card {
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.8), rgba(255, 255, 255, 0.6)) !important;
+  backdrop-filter: blur(25px) !important;
+  -webkit-backdrop-filter: blur(25px) !important;
+  border: 1px solid rgba(255, 255, 255, 0.8) !important;
+  border-bottom: 1px solid rgba(248, 161, 2, 0.3) !important;
+  border-right: 1px solid rgba(248, 161, 2, 0.3) !important;
+  border-radius: 20px !important;
+  box-shadow:
+    0 10px 40px rgba(0, 0, 0, 0.1),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.5),
+    inset 0 1px 0 rgba(255, 255, 255, 0.8) !important;
+}
+
+.theme--dark .glass-panel,
+.theme--dark .glass-card {
+  background: linear-gradient(135deg, rgba(44, 44, 44, 0.6), rgba(30, 30, 30, 0.6)) !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  border-top: 1px solid rgba(255, 255, 255, 0.2) !important;
+  border-left: 1px solid rgba(255, 255, 255, 0.2) !important;
+  box-shadow:
+    0 10px 40px rgba(0, 0, 0, 0.4),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1) !important;
+  color: white !important;
+}
+
+/* Glass Table / Data Table */
+.glass-table {
+  background: transparent !important;
+}
+
+.glass-table.v-data-table {
+  background: rgba(255, 255, 255, 0.4) !important;
+  backdrop-filter: blur(15px) !important;
+  border-radius: 16px !important;
+  border: 1px solid rgba(255, 255, 255, 0.6) !important;
+  box-shadow: none !important;
+  /* Managed by container card usually */
+}
+
+.theme--dark .glass-table.v-data-table {
+  background: rgba(30, 30, 30, 0.4) !important;
+  border: 1px solid rgba(255, 255, 255, 0.05) !important;
+  color: white !important;
+}
+
+/* Enhanced Table Headers for Scroll readability */
+.glass-table th {
+  background: rgba(240, 240, 240, 0.85) !important;
+  /* Higher opacity */
+  backdrop-filter: blur(20px) !important;
+  /* Blur underlying scroll */
+  -webkit-backdrop-filter: blur(20px) !important;
+  color: var(--govi-gris-oscuro) !important;
+  font-weight: 800 !important;
+  text-transform: uppercase;
+  font-size: 0.85rem !important;
+  letter-spacing: 0.5px;
+  border-bottom: 2px solid rgba(248, 161, 2, 0.4) !important;
+  z-index: 5 !important;
+}
+
+.theme--dark .glass-table th {
+  background: rgba(40, 40, 40, 0.9) !important;
+  color: var(--govi-naranja) !important;
+  border-bottom: 2px solid rgba(248, 161, 2, 0.6) !important;
+}
+
+.glass-table tr:hover {
+  background: linear-gradient(90deg, rgba(248, 161, 2, 0.05), rgba(248, 161, 2, 0.15)) !important;
+}
+
+
+
+/* Glass Inputs */
+.glass-input .v-input__slot {
+  background: rgba(255, 255, 255, 0.5) !important;
+  backdrop-filter: blur(5px);
+  border: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+.theme--dark .glass-input .v-input__slot {
+  background: rgba(0, 0, 0, 0.3) !important;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* Glass Button */
+.glass-btn {
+  background: linear-gradient(135deg, var(--govi-naranja) 0%, var(--govi-naranja-hover) 100%) !important;
+  color: white !important;
+  box-shadow: 0 4px 15px rgba(248, 161, 2, 0.3) !important;
+  font-weight: bold;
+  letter-spacing: 1px;
+}
+
+.glass-btn .v-icon {
+  color: white !important;
+}
+
+/* Scrollbar Customization */
+::-webkit-scrollbar {
+  width: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.1);
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(248, 161, 2, 0.5);
+  border-radius: 5px;
+}
+
+.theme--dark ::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.theme--dark ::-webkit-scrollbar-thumb {
+  background: rgba(248, 161, 2, 0.6);
+}
+
+/* Excel-style Border Table Typography & Colors (From AnalisisCuadroInversion) */
+.glass-table.border-table td {
+  border-right: 1px solid rgba(0, 0, 0, 0.1);
+  font-size: 0.8rem !important;
+}
+
+.glass-table.border-table th {
+  white-space: nowrap;
+  font-size: 0.8rem !important;
+}
+
+.theme--dark .glass-table.border-table td {
+  border-right: 1px solid rgba(255, 255, 255, 0.1);
+}

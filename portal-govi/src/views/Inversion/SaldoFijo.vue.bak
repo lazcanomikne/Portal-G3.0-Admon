@@ -1,0 +1,534 @@
+<template>
+    <v-container>
+        <!-- Toolbar con acciones principales -->
+        <v-toolbar dense class="mb-4">
+            <v-toolbar-title>Saldo Fijo</v-toolbar-title>
+            <v-spacer> </v-spacer>
+            <v-btn depressed class="mr-2" :disabled="!selectedFile" @click="EnviarSap">
+                Enviar
+            </v-btn>
+            <v-btn v-if="id > 0" depressed color="error" class="mr-2" @click="BorrarRegistros">
+                Borrar
+            </v-btn>
+        </v-toolbar>
+        <!--  -->
+        <v-card class="mb-4">
+            <v-card-text>
+                <v-row class="form-group align-center">
+                    <v-col cols="12" md="4">
+                        <v-text-field v-model="fecha" label="Fecha" prepend-inner-icon="event" type="date" outlined
+                            dense hide-details @input="OnLoadData"></v-text-field>
+                    </v-col>
+                    <v-col cols="12" md="8">
+                        <v-file-input label="Buscar archivo" outlined dense @change="onFileChange"
+                            prepend-inner-icon="mdi-file-excel" hide-details show-size v-model="selectedFile"></v-file-input>
+                    </v-col>
+                </v-row>
+            </v-card-text>
+        </v-card>
+
+        <v-card>
+            <v-data-table :headers="columnas" :items="registrosFiltrados" :loading="cargando" :search="filtros.busqueda"
+                :items-per-page="10" class="elevation-1" fixed-header height="500px" dense :footer-props="{
+                    'items-per-page-options': [5, 10, 25, 50, -1]
+                }">
+                <!-- Slot para personalizar celdas -->
+                <template v-slot:item.saldoFijo="{ item }">
+                    <span class="font-weight-bold text-success">
+                        ${{ formatearNumero(item.saldoFijo) }}
+                    </span>
+                </template>
+
+                <!-- Slot para acciones -->
+                <template v-slot:item.acciones="{ item }">
+                    <v-tooltip bottom>
+                        <template v-slot:activator="{ on, attrs }">
+                            <v-btn icon small color="primary" @click="editarRegistro(item)" v-bind="attrs" v-on="on">
+                                <v-icon>edit</v-icon>
+                            </v-btn>
+                        </template>
+                        <span>Editar</span>
+                    </v-tooltip>
+
+                    <v-tooltip bottom>
+                        <template v-slot:activator="{ on, attrs }">
+                            <v-btn icon small color="info" @click="verDetalle(item)" v-bind="attrs" v-on="on">
+                                <v-icon>preview</v-icon>
+                            </v-btn>
+                        </template>
+                        <span>Ver Detalle</span>
+                    </v-tooltip>
+
+                    <v-tooltip bottom>
+                        <template v-slot:activator="{ on, attrs }">
+                            <v-btn icon small color="error" @click="confirmarEliminacion(item)" v-bind="attrs"
+                                v-on="on">
+                                <v-icon>delete</v-icon>
+                            </v-btn>
+                        </template>
+                        <span>Eliminar</span>
+                    </v-tooltip>
+                </template>
+
+                <!-- Slot para cuando no hay datos -->
+                <template v-slot:no-data>
+                    <div class="text-center pa-4">
+                        <v-icon size="64" color="grey">mdi-database-off</v-icon>
+                        <p class="text-h6 grey--text mt-2">No hay registros disponibles</p>
+                        <v-btn color="primary" @click="abrirDialogoCrear">
+                            Crear primer registro
+                        </v-btn>
+                    </div>
+                </template>
+            </v-data-table>
+        </v-card>
+
+        <!-- Dialogo para crear/editar registro -->
+        <v-dialog v-model="dialogoFormulario" max-width="600px" persistent>
+            <v-card>
+                <v-card-title class="headline">
+                    {{ esEdicion ? 'Editar Registro' : 'Nuevo Registro' }}
+                </v-card-title>
+
+                <v-card-text>
+                    <v-form ref="formulario" v-model="formularioValido">
+                        <v-row>
+                            <v-col cols="12">
+                                <v-text-field v-model="registroEditando.titular" label="Titular *"
+                                    :rules="reglas.titular" required></v-text-field>
+                            </v-col>
+                        </v-row>
+
+                        <v-row>
+                            <v-col cols="12">
+                                <v-text-field v-model="registroEditando.cuenta" label="Número de Cuenta *"
+                                    :rules="reglas.cuenta" required></v-text-field>
+                            </v-col>
+                        </v-row>
+
+                        <v-row>
+                            <v-col cols="12">
+                                <v-text-field v-model="registroEditando.saldoFijo" label="Saldo Fijo *" type="number"
+                                    step="0.01" :rules="reglas.saldoFijo" required></v-text-field>
+                            </v-col>
+                        </v-row>
+                    </v-form>
+                </v-card-text>
+
+                <v-card-actions>
+                    <v-spacer></v-spacer>
+                    <v-btn color="grey" text @click="cerrarDialogoFormulario">
+                        Cancelar
+                    </v-btn>
+                    <v-btn color="primary" @click="guardarRegistro" :disabled="!formularioValido" :loading="guardando">
+                        {{ esEdicion ? 'Actualizar' : 'Crear' }}
+                    </v-btn>
+                </v-card-actions>
+            </v-card>
+        </v-dialog>
+
+        <!-- Dialogo para ver detalle -->
+        <v-dialog v-model="dialogoDetalle" max-width="500px">
+            <v-card>
+                <v-card-title class="headline">
+                    Detalle del Registro
+                </v-card-title>
+
+                <v-card-text>
+                    <v-list>
+                        <v-list-item>
+                            <v-list-item-content>
+                                <v-list-item-title>ID</v-list-item-title>
+                                <v-list-item-subtitle>{{ registroSeleccionado.id }}</v-list-item-subtitle>
+                            </v-list-item-content>
+                        </v-list-item>
+                        <v-list-item>
+                            <v-list-item-content>
+                                <v-list-item-title>Titular</v-list-item-title>
+                                <v-list-item-subtitle>{{ registroSeleccionado.titular }}</v-list-item-subtitle>
+                            </v-list-item-content>
+                        </v-list-item>
+                        <v-list-item>
+                            <v-list-item-content>
+                                <v-list-item-title>Cuenta</v-list-item-title>
+                                <v-list-item-subtitle>{{ registroSeleccionado.cuenta }}</v-list-item-subtitle>
+                            </v-list-item-content>
+                        </v-list-item>
+                        <v-list-item>
+                            <v-list-item-content>
+                                <v-list-item-title>Saldo Fijo</v-list-item-title>
+                                <v-list-item-subtitle>${{ formatearNumero(registroSeleccionado.saldoFijo)
+                                    }}</v-list-item-subtitle>
+                            </v-list-item-content>
+                        </v-list-item>
+                    </v-list>
+                </v-card-text>
+
+                <v-card-actions>
+                    <v-spacer></v-spacer>
+                    <v-btn color="primary" text @click="dialogoDetalle = false">
+                        Cerrar
+                    </v-btn>
+                </v-card-actions>
+            </v-card>
+        </v-dialog>
+
+        <!-- Dialogo de confirmación para eliminar -->
+        <v-dialog v-model="dialogoEliminacion" max-width="400px">
+            <v-card>
+                <v-card-title class="headline">
+                    Confirmar Eliminación
+                </v-card-title>
+                <v-card-text>
+                    ¿Está seguro de que desea eliminar este registro?
+                    <br><br>
+                    <strong>Titular:</strong> {{ registroAEliminar.titular }}
+                    <br>
+                    <strong>Cuenta:</strong> {{ registroAEliminar.cuenta }}
+                    <br>
+                    <strong>Saldo Fijo:</strong> ${{ formatearNumero(registroAEliminar.saldoFijo) }}
+                </v-card-text>
+                <v-card-actions>
+                    <v-spacer></v-spacer>
+                    <v-btn color="grey" text @click="dialogoEliminacion = false">
+                        Cancelar
+                    </v-btn>
+                    <v-btn color="error" @click="eliminarRegistro" :loading="eliminando">
+                        Eliminar
+                    </v-btn>
+                </v-card-actions>
+            </v-card>
+        </v-dialog>
+
+        <!-- Snackbar para notificaciones -->
+        <v-snackbar v-model="snackbar.mostrar" :color="snackbar.color" :timeout="snackbar.timeout">
+            {{ snackbar.mensaje }}
+            <template v-slot:action="{ attrs }">
+                <v-btn color="white" text v-bind="attrs" @click="snackbar.mostrar = false">
+                    Cerrar
+                </v-btn>
+            </template>
+        </v-snackbar>
+
+        <!-- Overlay de carga -->
+        <v-overlay :value="cargando" style="text-align: center">
+            <div>
+                <v-progress-circular indeterminate size="64"></v-progress-circular>
+                <p class="mt-2">Cargando datos...</p>
+            </div>
+        </v-overlay>
+    </v-container>
+</template>
+
+<script>
+import { mapActions, mapState } from "vuex";
+import { mixin } from "../../mixin";
+
+export default {
+    name: "SaldoFijo",
+    data: () => ({
+        // Datos de la tabla
+        registros: [],
+        registrosFiltrados: [],
+        cargando: false,
+
+        // Filtros
+        filtros: {
+            busqueda: '',
+            saldoMinimo: ''
+        },
+
+        // Columnas de la tabla
+        columnas: [
+            { text: 'ID', value: 'id', sortable: true, width: '80px' },
+            { text: 'Titular', value: 'titular', sortable: true },
+            { text: 'Cuenta', value: 'cuenta', sortable: true },
+            { text: 'Saldo Fijo', value: 'saldoFijo', sortable: true },
+            { text: 'Acciones', value: 'acciones', sortable: false, width: '150px' }
+        ],
+
+        // Estados de diálogos
+        dialogoFormulario: false,
+        dialogoDetalle: false,
+        dialogoEliminacion: false,
+
+        // Formulario
+        formularioValido: false,
+        esEdicion: false,
+        guardando: false,
+        eliminando: false,
+
+        // Registro en edición
+        registroEditando: {
+            id: 0,
+            titular: '',
+            cuenta: '',
+            saldoFijo: 0
+        },
+
+        // Registro seleccionado para ver detalle
+        registroSeleccionado: {},
+
+        // Registro a eliminar
+        registroAEliminar: {},
+
+        // Reglas de validación
+        reglas: {
+            titular: [
+                v => !!v || 'Titular es requerido',
+                v => (v && v.length >= 3) || 'Titular debe tener al menos 3 caracteres'
+            ],
+            cuenta: [
+                v => !!v || 'Número de cuenta es requerido',
+                v => (v && v.length >= 5) || 'Número de cuenta debe tener al menos 5 caracteres'
+            ],
+            saldoFijo: [
+                v => !!v || 'Saldo fijo es requerido',
+                v => v >= 0 || 'Saldo fijo no puede ser negativo'
+            ]
+        },
+
+        // Snackbar
+        snackbar: {
+            mostrar: false,
+            mensaje: '',
+            color: 'success',
+            timeout: 3000
+        }
+    }),
+
+    mixins: [mixin],
+
+    mounted () {
+        this.cargarRegistros();
+    },
+
+    methods: {
+        ...mapActions("inversion", ["getSaldoFijo", "postSaldoFijo", "putSaldoFijo", "deleteSaldoFijo"]),
+
+        // Cargar registros
+        async cargarRegistros () {
+            this.cargando = true;
+            try {
+                // Simular datos de ejemplo - reemplazar con la acción real del store
+                const response = await this.getSaldoFijo();
+                this.registros = response || [
+                    { id: 1, titular: "Juan Pérez García", cuenta: "1234567890", saldoFijo: 50000.00 },
+                    { id: 2, titular: "María López Rodríguez", cuenta: "0987654321", saldoFijo: 75000.50 },
+                    { id: 3, titular: "Carlos Hernández Silva", cuenta: "1122334455", saldoFijo: 25000.75 }
+                ];
+                this.registrosFiltrados = [...this.registros];
+                this.mostrarMensaje('Datos cargados correctamente', 'success');
+            } catch (error) {
+                console.error('Error al cargar registros:', error);
+                this.mostrarMensaje('Error al cargar los datos', 'error');
+            } finally {
+                this.cargando = false;
+            }
+        },
+
+        // Filtrar registros
+        filtrarRegistros () {
+            let filtrados = [...this.registros];
+
+            if (this.filtros.busqueda) {
+                const busqueda = this.filtros.busqueda.toLowerCase();
+                filtrados = filtrados.filter(registro =>
+                    registro.titular.toLowerCase().includes(busqueda) ||
+                    registro.cuenta.toLowerCase().includes(busqueda)
+                );
+            }
+
+            if (this.filtros.saldoMinimo) {
+                const saldoMinimo = parseFloat(this.filtros.saldoMinimo);
+                filtrados = filtrados.filter(registro => registro.saldoFijo >= saldoMinimo);
+            }
+
+            this.registrosFiltrados = filtrados;
+        },
+
+        // Limpiar filtros
+        limpiarFiltros () {
+            this.filtros = {
+                busqueda: '',
+                saldoMinimo: ''
+            };
+            this.registrosFiltrados = [...this.registros];
+        },
+
+        // Abrir diálogo para crear
+        abrirDialogoCrear () {
+            this.esEdicion = false;
+            this.registroEditando = {
+                id: 0,
+                titular: '',
+                cuenta: '',
+                saldoFijo: 0
+            };
+            this.dialogoFormulario = true;
+        },
+
+        // Editar registro
+        editarRegistro (registro) {
+            this.esEdicion = true;
+            this.registroEditando = { ...registro };
+            this.dialogoFormulario = true;
+        },
+
+        // Ver detalle
+        verDetalle (registro) {
+            this.registroSeleccionado = { ...registro };
+            this.dialogoDetalle = true;
+        },
+
+        // Confirmar eliminación
+        confirmarEliminacion (registro) {
+            this.registroAEliminar = { ...registro };
+            this.dialogoEliminacion = true;
+        },
+
+        // Cerrar diálogo de formulario
+        cerrarDialogoFormulario () {
+            this.dialogoFormulario = false;
+            this.$refs.formulario?.reset();
+        },
+
+        // Guardar registro
+        async guardarRegistro () {
+            if (!this.$refs.formulario.validate()) return;
+
+            this.guardando = true;
+            try {
+                if (this.esEdicion) {
+                    // Actualizar registro existente
+                    await this.putSaldoFijo(this.registroEditando);
+                    const index = this.registros.findIndex(r => r.id === this.registroEditando.id);
+                    if (index !== -1) {
+                        this.registros.splice(index, 1, { ...this.registroEditando });
+                    }
+                    this.mostrarMensaje('Registro actualizado correctamente', 'success');
+                } else {
+                    // Crear nuevo registro
+                    const nuevoRegistro = {
+                        ...this.registroEditando,
+                        id: Math.max(...this.registros.map(r => r.id), 0) + 1 // Generar nuevo ID
+                    };
+                    await this.postSaldoFijo(nuevoRegistro);
+                    this.registros.unshift(nuevoRegistro);
+                    this.mostrarMensaje('Registro creado correctamente', 'success');
+                }
+
+                this.filtrarRegistros();
+                this.cerrarDialogoFormulario();
+            } catch (error) {
+                console.error('Error al guardar registro:', error);
+                this.mostrarMensaje('Error al guardar el registro', 'error');
+            } finally {
+                this.guardando = false;
+            }
+        },
+
+        // Eliminar registro
+        async eliminarRegistro () {
+            this.eliminando = true;
+            try {
+                await this.deleteSaldoFijo(this.registroAEliminar.id);
+                const index = this.registros.findIndex(r => r.id === this.registroAEliminar.id);
+                if (index !== -1) {
+                    this.registros.splice(index, 1);
+                }
+                this.filtrarRegistros();
+                this.dialogoEliminacion = false;
+                this.mostrarMensaje('Registro eliminado correctamente', 'success');
+            } catch (error) {
+                console.error('Error al eliminar registro:', error);
+                this.mostrarMensaje('Error al eliminar el registro', 'error');
+            } finally {
+                this.eliminando = false;
+            }
+        },
+
+        // Exportar datos
+        exportarDatos () {
+            const datos = this.registrosFiltrados.map(registro => ({
+                'ID': registro.id,
+                'Titular': registro.titular,
+                'Cuenta': registro.cuenta,
+                'Saldo Fijo': registro.saldoFijo
+            }));
+
+            // Crear CSV
+            const csv = this.convertirACSV(datos);
+            this.descargarArchivo(csv, 'saldo_fijo.csv', 'text/csv');
+            this.mostrarMensaje('Datos exportados correctamente', 'success');
+        },
+
+        // Convertir datos a CSV
+        convertirACSV (datos) {
+            if (datos.length === 0) return '';
+
+            const headers = Object.keys(datos[0]);
+            const csvContent = [
+                headers.join(','),
+                ...datos.map(row => headers.map(header => `"${row[header] || ''}"`).join(','))
+            ].join('\n');
+
+            return csvContent;
+        },
+
+        // Descargar archivo
+        descargarArchivo (contenido, nombreArchivo, tipoMIME) {
+            const blob = new Blob([contenido], { type: tipoMIME });
+            const url = window.URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = nombreArchivo;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            window.URL.revokeObjectURL(url);
+        },
+
+        // Formatear número
+        formatearNumero (numero) {
+            return new Intl.NumberFormat('es-MX', {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2
+            }).format(numero);
+        },
+
+        // Mostrar mensaje
+        mostrarMensaje (mensaje, color = 'success') {
+            this.snackbar = {
+                mostrar: true,
+                mensaje,
+                color,
+                timeout: 3000
+            };
+        }
+    },
+
+    computed: {
+        ...mapState("login", ["userName"])
+    }
+};
+</script>
+
+<style scoped>
+.v-data-table>>>.v-data-table__wrapper {
+    overflow-x: auto;
+}
+
+.v-data-table>>>.v-data-table__mobile-row {
+    min-height: 40px;
+}
+
+.v-card {
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.v-toolbar {
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+</style>
+

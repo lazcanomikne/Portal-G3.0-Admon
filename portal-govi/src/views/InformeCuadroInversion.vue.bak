@@ -1,0 +1,269 @@
+<template>
+  <v-container fluid class="pa-4 mt-4">
+    <v-card elevation="3">
+      <v-toolbar dense class="glass-toolbar mb-4">
+        <v-toolbar-title class="font-weight-bold">
+          <v-icon left>mdi-finance</v-icon>
+          Cuadro de Inversión
+        </v-toolbar-title>
+        <v-spacer></v-spacer>
+        
+        <export-excel
+          v-if="data.length > 0"
+          :data="data"
+          worksheet="Reporte"
+          :name="`Inversion_${new Date().toISOString().substr(0,10)}.xls`"
+        >
+          <v-btn color="success" small depressed class="font-weight-bold">
+            <v-icon left>mdi-microsoft-excel</v-icon>
+            Descargar Excel
+          </v-btn>
+        </export-excel>
+
+        <v-btn v-else small depressed disabled class="white--text">
+          <v-icon left>mdi-microsoft-excel</v-icon>
+          Descargar Excel
+        </v-btn>
+      </v-toolbar>
+
+      <v-card-text class="pt-6">
+        <v-sheet outlined rounded class="glass-panel pa-4 mb-6">
+          <div class="subtitle-1 font-weight-bold mb-2 primary--text">
+            <v-icon small left color="primary">mdi-calendar-clock</v-icon>
+            Configuración de Periodos
+          </div>
+          
+          <v-form ref="form">
+            <v-row dense>
+              <v-col 
+                v-for="(label, index) in dateLabels" 
+                :key="index"
+                cols="12" sm="6" md="3" lg="2"
+              >
+                <v-menu
+                  v-model="menus[index]"
+                  :close-on-content-click="false"
+                  :nudge-right="40"
+                  transition="scale-transition"
+                  offset-y
+                  min-width="auto"
+                >
+                  <template v-slot:activator="{ on, attrs }">
+                    <v-text-field
+                      v-model="date[index]"
+                      :label="label"
+                      prepend-inner-icon="mdi-calendar"
+                      readonly
+                      outlined
+                      dense
+                      background-color="transparent"
+                      hide-details
+                      v-bind="attrs"
+                      v-on="on"
+                      class="glass-input caption"
+                    ></v-text-field>
+                  </template>
+                  <v-date-picker 
+                    v-model="date[index]" 
+                    @input="$set(menus, index, false)" 
+                    scrollable
+                    locale="es-mx"
+                    color="primary"
+                  >
+                  </v-date-picker>
+                </v-menu>
+              </v-col>
+              
+              <v-col cols="12" md="3" lg="2" class="d-flex align-center">
+                <v-btn block class="glass-btn" color="secondary" @click="cargarDatos" :loading="overlay" elevation="2">
+                  <v-icon left>mdi-magnify</v-icon>
+                  Consultar
+                </v-btn>
+              </v-col>
+            </v-row>
+          </v-form>
+        </v-sheet>
+
+        <v-divider class="mb-4"></v-divider>
+
+        <v-data-table
+          :headers="headers"
+          :items="data"
+          :search="search"
+          :items-per-page="15"
+          item-key="cuenta"
+          class="glass-table elevation-1 zebra-table sticky-first-col"
+          fixed-header
+          height="550px" 
+          dense
+          :loading="overlay"
+          loading-text="Calculando saldos..."
+          mobile-breakpoint="0" 
+        >
+          <template v-slot:top>
+            <v-toolbar flat dense color="transparent" class="mb-2">
+              <v-toolbar-title class="subtitle-2 text-uppercase grey--text">
+                Resultados: {{ data.length }} registros
+              </v-toolbar-title>
+              <v-spacer></v-spacer>
+              <v-text-field
+                v-model="search"
+                label="Filtrar en tabla"
+                prepend-inner-icon="mdi-filter"
+                single-line
+                hide-details
+                dense
+                outlined
+                class="glass-input"
+                style="max-width: 300px"
+              ></v-text-field>
+            </v-toolbar>
+          </template>
+
+          <template v-slot:[`item.saldoDiario`]="{ item }">
+            <div :class="['font-weight-bold', getColor(item.saldoDiario)]"> 
+              {{ item.saldoDiario | currency }} 
+            </div>
+          </template>
+          
+          <template v-slot:[`item.total`]="{ item }">
+             <div class="blue--text text--darken-3 font-weight-bold">
+               {{ item.total | currency }}
+             </div>
+          </template>
+          
+          <template v-for="header in moneyHeaders" v-slot:[`item.${header}`]="{ item }">
+             {{ item[header] | currency }}
+          </template>
+
+        </v-data-table>
+      </v-card-text>
+    </v-card>
+
+    <v-overlay :value="overlay" z-index="9999">
+      <div class="text-center white--text">
+        <v-progress-circular indeterminate size="64" color="white" class="mb-3"></v-progress-circular>
+        <h3>Procesando Cuadro de Inversión</h3>
+        <p>Por favor espere...</p>
+      </div>
+    </v-overlay>
+  </v-container>
+</template>
+
+<script>
+import { mapActions } from "vuex";
+
+export default {
+  data() {
+    return {
+      search: "",
+      menus: [false, false, false, false, false, false, false],
+      dateLabels: [
+        "F. Inicio Cuadro", "F. Fin Cuadro", "F. Saldo Diario", 
+        "F. Ini Doc.", "F. Fin Doc.", "F. Ini Contab.", "F. Fin Contab."
+      ],
+      date: Array(7).fill(new Date().toISOString().substr(0, 10)),
+      data: [],
+      overlay: false,
+      // Lista de campos que son moneda para iterar en el template (ahorra codigo)
+      moneyHeaders: [
+         "transfers", "importe Sin Domiciliados", "importe Domiciliado",
+         "domiciliados EDC (CFE,DOMICILIACION)", "comisiones EDC (IVA,COMISION)",
+         "depositos", "depositos Cuenta Propia", "cheques Devolucion"
+      ],
+      headers: [
+        // 'divider: true' crea una linea vertical en el header
+        { text: "Empresa", value: "empresa", width: "160px", fixed: true, class: "primary lighten-4 black--text" },
+        { text: "Cuenta", value: "cuenta", width: "130px", class: "grey lighten-3" },
+        { text: "Nombre Cuenta", value: "nombreCuenta", width: "220px", class: "grey lighten-3" },
+        { text: "Saldo Diario", value: "saldoDiario", align: "end", width: "140px", class: "grey lighten-3" },
+        { text: "Total", value: "total", align: "end", width: "140px", class: "grey lighten-3" },
+        { text: "Transfers", value: "transfers", align: "end", width: "130px" },
+        { text: "Imp. Sin Dom.", value: "importe Sin Domiciliados", align: "end", width: "130px" },
+        { text: "Imp. Dom.", value: "importe Domiciliado", align: "end", width: "130px" },
+        { text: "Dom. EDC", value: "domiciliados EDC (CFE,DOMICILIACION)", align: "end", width: "140px" },
+        { text: "Com. EDC", value: "comisiones EDC (IVA,COMISION)", align: "end", width: "140px" },
+        { text: "Depósitos", value: "depositos", align: "end", width: "130px" },
+        { text: "Dep. Cta Propia", value: "depositos Cuenta Propia", align: "end", width: "150px" },
+        { text: "Chq. Dev.", value: "cheques Devolucion", align: "end", width: "130px" },
+        { text: "Tesorería", value: "tesoreria", width: "130px" },
+        { text: "T.C.", value: "tipo de Cambio", width: "80px" },
+        { text: "Fecha", value: "fecha", width: "110px" },
+      ],
+    };
+  },
+  filters: {
+    currency(value) {
+      if (!value) return "-"; // Muestra un guion si es 0 o null para limpiar la vista
+      return new Intl.NumberFormat("es-MX", {
+        style: "currency",
+        currency: "MXN",
+        minimumFractionDigits: 2
+      }).format(value);
+    }
+  },
+  methods: {
+    ...mapActions("informes", { getInfo: "getCuadroInversion" }),
+    
+    getColor(amount) {
+      if (amount < 0) return 'red--text text--accent-4';
+      return 'green--text text--darken-3';
+    },
+
+    cargarDatos() {
+      const fechas = this.date.map((d) => d.replaceAll("-", "")).join(",");
+      this.overlay = true;
+      this.getInfo(fechas)
+        .then((data) => {
+          this.data = data;
+        })
+        .catch((error) => console.error(error))
+        .finally(() => {
+          this.overlay = false;
+        });
+    },
+  },
+};
+</script>
+
+<style scoped>
+/* 1. Estilos para filas acebradas (Striped Rows) */
+.zebra-table >>> tbody tr:nth-of-type(odd) {
+  background-color: #f9f9f9;
+}
+.zebra-table >>> tbody tr:hover {
+  background-color: #e3f2fd !important; /* Azul muy claro al pasar el mouse */
+}
+
+/* 2. Bordes para las celdas para que parezca Excel */
+.zebra-table >>> td {
+  border-right: 1px solid #e0e0e0;
+  font-size: 0.8rem !important; /* Letra un poco mas pequeña para que quepa todo */
+}
+
+/* 3. Encabezados mas destacados */
+.zebra-table >>> th {
+  text-transform: uppercase;
+  font-size: 0.75rem;
+  letter-spacing: 0.5px;
+  height: 48px !important;
+  border-right: 1px solid #d0d0d0;
+}
+
+/* 4. TRUCO CSS: Sticky First Column (Fijar primera columna) 
+   Esto hace que la columna "Empresa" se quede quieta */
+.sticky-first-col >>> table > thead > tr > th:first-child,
+.sticky-first-col >>> table > tbody > tr > td:first-child {
+  position: sticky !important; 
+  left: 0;
+  z-index: 3;
+  background: white; /* Necesario para tapar lo que pasa por debajo */
+  border-right: 2px solid #ccc; /* Borde mas fuerte para indicar separacion */
+  font-weight: bold;
+}
+
+/* Asegurar que el header fijo tenga z-index mayor que la columna fija */
+.sticky-first-col >>> .v-data-table__wrapper {
+  overflow-x: auto; /* Forzar scroll horizontal */
+}
+</style>

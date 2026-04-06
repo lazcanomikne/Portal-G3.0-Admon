@@ -1,0 +1,1101 @@
+<template>
+  <v-container fluid class="pa-4 payment-dashboard">
+    <!-- Top Action Bar -->
+    <v-toolbar dense flat id="p" class="glass-toolbar mb-4 rounded-lg elevation-2">
+      <v-icon color="primary" class="mr-3">payments</v-icon>
+      <v-toolbar-title class="font-weight-black brand-secondary--text">
+        Aplicación de Pagos <span class="font-weight-light grey--text">| Facturas con Descuentos</span>
+      </v-toolbar-title>
+      <v-spacer></v-spacer>
+      
+      <div v-if="folioPagoConsulta" class="d-flex align-center">
+        <v-chip label color="primary" class="mr-4 font-weight-bold" dark>Folio: {{ folioPagoConsulta }}</v-chip>
+        <v-btn depressed class="glass-btn mr-2" @click="autorizarPago">
+          <v-icon left>check_circle</v-icon> Autorizar
+        </v-btn>
+        <v-btn depressed color="error" class="rounded-pill" @click="cancelarPago">
+          <v-icon left>cancel</v-icon> Cancelar
+        </v-btn>
+      </div>
+
+      <div v-else class="d-flex align-center">
+        <v-btn depressed class="glass-btn mr-2" @click="guardarPago(1)" :disabled="!selectedToFile.length">
+          <v-icon left>save</v-icon> Preaplicación
+        </v-btn>
+        <v-btn v-if="canCreate" class="brand-btn" depressed @click="guardarPago(2)" :disabled="!selectedToFile.length">
+          <v-icon left>bolt</v-icon> Generar Operación
+        </v-btn>
+      </div>
+    </v-toolbar>
+
+    <v-row class="fill-height">
+      <!-- SIDEBAR: Configuration & Filters -->
+      <v-col cols="12" md="3" lg="3" class="pr-md-2">
+        <v-card class="glass-card fill-height pa-4 rounded-xl shadow-premium border-thin">
+          <div class="text-overline font-weight-black grey--text mb-4 d-flex align-center">
+            <v-icon small class="mr-2">settings</v-icon> CONFIGURACIÓN
+          </div>
+
+          <v-select label="Sociedad o Empresa" dense solo flat background-color="rgba(0,0,0,0.05)" :items="sociedades" 
+            v-model="selectedSociedad" :item-text="getSociedadText" item-value="u_CompnyName" return-object 
+            @input="cargarDatos" :disabled="selectedToFile.length > 0" prepend-inner-icon="domain" class="rounded-lg mb-2"></v-select>
+
+          <v-combobox label="Sucursal" dense solo flat background-color="rgba(0,0,0,0.05)" :items="sucursales" 
+            v-model="selectedSucursal" :item-text="getSucursalText" return-object item-value="bplName" 
+            @input="cargarDatos2" :disabled="selectedToFile.length > 0" prepend-inner-icon="storefront" class="rounded-lg mb-2"></v-combobox>
+
+          <v-combobox label="Cuenta Bancaria" dense solo flat background-color="rgba(0,0,0,0.05)" :items="cuentas" 
+            :item-text="getCuentaText" item-value="glAccount" v-model="selectedCuenta" return-object 
+            @input="cargarDatos3" :disabled="selectedToFile.length > 0" prepend-inner-icon="account_balance" class="rounded-lg mb-2"></v-combobox>
+
+          <v-combobox label="Cliente" dense solo flat background-color="rgba(0,0,0,0.05)" :items="customers" 
+            :item-text="getCustomerText" item-value="cardCode" v-model="selectedCustomer" return-object 
+            @input="cargarDatos4" :disabled="selectedToFile.length > 0" prepend-inner-icon="person_search" class="rounded-lg mb-4"></v-combobox>
+
+          <v-divider class="mb-4"></v-divider>
+
+          <div class="text-overline font-weight-black grey--text mb-4 d-flex align-center">
+            <v-icon small class="mr-2">event</v-icon> FECHAS Y PAGO
+          </div>
+
+          <v-text-field v-model="fecha" label="Fecha Sistema" dense solo flat background-color="rgba(0,0,0,0.03)" 
+            prepend-inner-icon="today" type="date" disabled class="rounded-lg mb-2"></v-text-field>
+
+          <v-text-field v-model="fechaPago" label="Fecha Pago" dense solo flat background-color="rgba(248, 161, 2, 0.05)" 
+            prepend-inner-icon="event_available" type="date" class="rounded-lg mb-2 custom-date-field"></v-text-field>
+
+          <v-combobox label="Forma de Pago" dense solo flat background-color="rgba(0,0,0,0.05)" :items="formasPagos" 
+            v-model="selectedFormaPago" item-text="descr" return-object item-value="fidValue" 
+            :disabled="selectedToFile.length > 0" prepend-inner-icon="credit_card" class="rounded-lg mb-2"></v-combobox>
+
+          <v-combobox label="Pago edo. Cta" dense solo flat background-color="rgba(0,0,0,0.05)" :item-text="getPagoCtaText" 
+            item-value="glAccount" v-model="selectedPagoCta" :disabled="selectedToFile.length > 0"
+            @click="() => (this.showdialogCta = true)" prepend-inner-icon="account_balance_wallet" class="rounded-lg mb-4"></v-combobox>
+
+          <v-checkbox dense label="Modo Manual" v-model="value" hide-details class="mt-0 blue-check"></v-checkbox>
+          <v-checkbox dense label="Timbrar Pago" v-model="timbrarPago" hide-details class="mt-0 blue-check"></v-checkbox>
+        </v-card>
+      </v-col>
+
+      <!-- MAIN AREA: Dashboard & Tables -->
+      <v-col cols="12" md="9" lg="9" class="pl-md-2">
+        <!-- Dashboard Metrics Row -->
+        <v-row class="mb-4">
+          <v-col cols="12" sm="4">
+            <v-card class="metric-card glass-card rounded-xl pa-3 border-left-primary shadow-premium">
+              <div class="d-flex align-center">
+                <v-avatar color="primary lighten-4" size="48" class="mr-4">
+                  <v-icon color="primary">receipt_long</v-icon>
+                </v-avatar>
+                <div>
+                  <div class="text-caption grey--text font-weight-bold text-uppercase">Facturas Seleccionadas</div>
+                  <div class="text-h5 font-weight-black brand-secondary--text">{{ selectedToFile.length }}</div>
+                </div>
+              </div>
+            </v-card>
+          </v-col>
+          <v-col cols="12" sm="4">
+            <v-card class="metric-card glass-card rounded-xl pa-3 border-left-success shadow-premium">
+              <div class="d-flex align-center">
+                <v-avatar color="success lighten-4" size="48" class="mr-4">
+                  <v-icon color="success">account_balance_wallet</v-icon>
+                </v-avatar>
+                <div>
+                  <div class="text-caption grey--text font-weight-bold text-uppercase">Total a Aplicar</div>
+                  <div class="text-h5 font-weight-black success--text">{{ getTotal | currency }}</div>
+                </div>
+              </div>
+            </v-card>
+          </v-col>
+          <v-col cols="12" sm="4">
+            <v-card class="metric-card glass-card rounded-xl pa-3 border-left-info shadow-premium">
+              <div class="d-flex align-center">
+                <v-avatar color="info lighten-4" size="48" class="mr-4">
+                  <v-icon color="info">savings</v-icon>
+                </v-avatar>
+                <div>
+                  <div class="text-caption grey--text font-weight-bold text-uppercase">Saldo en Cuenta</div>
+                  <div class="text-h5 font-weight-black info--text">{{ (selectedPagoCta?.credAmnt || 0) | currency }}</div>
+                </div>
+              </div>
+            </v-card>
+          </v-col>
+        </v-row>
+
+        <!-- Templates & Special Modes -->
+        <v-row no-gutters class="mb-4">
+           <v-col cols="12">
+             <v-card class="glass-card rounded-xl shadow-sm pa-2 border-thin">
+               <v-row no-gutters align="center">
+                 <v-col cols="4">
+                   <v-file-input label="Adjuntar template" outlined dense hide-details @change="onFileChange"
+                     v-model="selectedFile" class="compact-file-input"></v-file-input>
+                 </v-col>
+                 <v-divider vertical class="mx-4"></v-divider>
+                 <v-col class="d-flex align-center">
+                   <v-checkbox hide-details class="pa-0 ma-0 mr-4" dense label="Pago a cuenta" v-model="pagoaCuenta"></v-checkbox>
+                   <v-text-field v-model="pagoaCuentaValue" :disabled="!pagoaCuenta" dense hide-details
+                     placeholder="Monto" prefix="$" type="number" class="compact-field mr-6"></v-text-field>
+                   
+                   <v-checkbox hide-details class="pa-0 ma-0 mr-4" dense label="Usar saldo favor" v-model="useSaldoFavor"></v-checkbox>
+                   <v-text-field v-model="saldoFavorValue" :disabled="!useSaldoFavor" dense hide-details
+                     placeholder="Saldo" prefix="$" type="number" class="compact-field mr-2"></v-text-field>
+                   <span class="text-caption grey--text">(Max: {{ saldoFavorCliente | currency }})</span>
+                 </v-col>
+               </v-row>
+             </v-card>
+           </v-col>
+        </v-row>
+
+        <!-- Split View: Tables -->
+        <v-row>
+          <v-col cols="12" xl="3" lg="3" md="4">
+            <v-card class="glass-card fill-height rounded-xl shadow-premium border-thin overflow-hidden">
+              <v-toolbar flat class="glass-toolbar-inner" dense>
+                <v-icon small class="mr-2">pending_actions</v-icon>
+                <span class="text-subtitle-2 font-weight-bold">Facturas Pendientes</span>
+                <v-spacer></v-spacer>
+                <v-chip x-small color="primary" dark>{{ pendingBills.length }}</v-chip>
+              </v-toolbar>
+              
+              <v-text-field v-model="search" label="Filtrar facturas..." dense filled hide-details
+                prepend-inner-icon="search" @keydown.stop.enter="handlerEvent" class="mx-2 mb-2 rounded-lg"></v-text-field>
+
+              <v-data-table dense v-if="!loadTable" :headers="headers" :items="pendingBills"
+                :search="search" hide-default-footer disable-pagination disable-sort fixed-header item-key="name"
+                class="glass-table compact-table" :height="tableHeight" id="tablemain">
+                <template v-slot:[`item.actions`]="{ item }">
+                  <v-btn icon x-small color="primary" @click="addItem(item)">
+                    <v-icon>add_circle</v-icon>
+                  </v-btn>
+                </template>
+                <template v-slot:[`item.docNum`]="{ item }">
+                  <span class="font-weight-bold">{{ item.docNum }}</span>
+                </template>
+                <template v-slot:[`item.saldoVencido`]="{ item }">
+                  <span class="font-weight-medium"> {{ item.saldoVencido | currency }} </span>
+                </template>
+                <template v-slot:[`item.docDate`]="{ item }">
+                   <small class="grey--text">{{ item.docDate | textcrop2(10) }}</small>
+                </template>
+              </v-data-table>
+              <v-skeleton-loader v-if="loadTable" type="table"></v-skeleton-loader>
+            </v-card>
+          </v-col>
+
+          <v-col cols="12" xl="9" lg="9" md="8">
+            <v-card class="glass-card fill-height rounded-xl shadow-premium border-thin overflow-hidden">
+              <v-toolbar flat class="glass-toolbar-inner" dense>
+                <v-icon small class="mr-2">task_alt</v-icon>
+                <span class="text-subtitle-2 font-weight-bold">Detalle de Aplicación</span>
+                <v-spacer></v-spacer>
+                <v-btn text x-small color="error" @click="deleteAll" v-if="selectedToFile.length">
+                  Limpiar todo
+                </v-btn>
+              </v-toolbar>
+
+              <v-data-table dense :headers="headers2" :items="selectedToFile" class="glass-table detail-table"
+                hide-default-footer disable-pagination disable-sort fixed-header :height="tableHeight" id="tabledetalle">
+                
+                <template v-slot:[`item.actions`]="{ item }">
+                  <v-btn icon x-small color="error" @click="deleteItem(item)">
+                    <v-icon>delete_outline</v-icon>
+                  </v-btn>
+                </template>
+
+                <template v-slot:[`item.total`]="{ item }">
+                  <v-chip small color="primary" class="font-weight-bold" dark>
+                    {{ item.total | currency }}
+                  </v-chip>
+                </template>
+
+                <template v-slot:[`item.rebajesoDevoluciones`]="{ item }">
+                  <v-chip label small outlined color="primary" class="pointer">
+                    <v-edit-dialog :return-value.sync="item.rebajesoDevoluciones" @save="recalculate(item)">
+                      {{ item.rebajesoDevoluciones | currency }}
+                      <v-icon x-small class="ml-1">edit</v-icon>
+                      <template v-slot:input>
+                        <v-text-field v-model="item.rebajesoDevoluciones" :label="item.docNum" single-line counter type="number"></v-text-field>
+                      </template>
+                    </v-edit-dialog>
+                  </v-chip>
+                </template>
+
+                <template v-slot:[`item.descuento1`]="{ item }">
+                  <v-checkbox dense hide-details :input-value="item.descuento1 > 0" 
+                    @change="(e) => itemCheckHandle(e, item, 'descuento1')" class="ma-0 pa-0"></v-checkbox>
+                </template>
+                <template v-slot:[`item.descuento2`]="{ item }">
+                  <v-checkbox dense hide-details :input-value="item.descuento2 > 0" 
+                    @change="(e) => itemCheckHandle(e, item, 'descuento2')" class="ma-0 pa-0"></v-checkbox>
+                </template>
+                <template v-slot:[`item.descuento3`]="{ item }">
+                  <v-checkbox dense hide-details :input-value="item.descuento3 > 0" 
+                    @change="(e) => itemCheckHandle(e, item, 'descuento3')" class="ma-0 pa-0"></v-checkbox>
+                </template>
+                <template v-slot:[`item.descuento4`]="{ item }">
+                  <v-checkbox dense hide-details :input-value="item.descuento4 > 0" 
+                    @change="(e) => itemCheckHandle(e, item, 'descuento4')" class="ma-0 pa-0"></v-checkbox>
+                </template>
+
+                <template v-slot:[`item.total1`]="{ item }"><small>{{ item.total1 | currency }}</small></template>
+                <template v-slot:[`item.total2`]="{ item }"><small>{{ item.total2 | currency }}</small></template>
+                <template v-slot:[`item.total3`]="{ item }"><small>{{ item.total3 | currency }}</small></template>
+                <template v-slot:[`item.total4`]="{ item }"><small>{{ item.total4 | currency }}</small></template>
+              </v-data-table>
+            </v-card>
+          </v-col>
+        </v-row>
+      </v-col>
+    </v-row>
+
+    <!-- Floating Discount Config (Bottom Sheet or Dialog) -->
+    <v-dialog v-model="showDiscounts" width="600">
+      <template v-slot:activator="{ on, attrs }">
+        <v-btn fab dark color="primary" fixed bottom right v-bind="attrs" v-on="on" class="elevation-4 shadow-premium">
+          <v-icon>percent</v-icon>
+        </v-btn>
+      </template>
+      <v-card class="rounded-xl pa-4">
+        <v-card-title class="headline d-flex align-center">
+          <v-icon color="primary" class="mr-2">settings_input_component</v-icon>
+          Configuración de Descuentos
+        </v-card-title>
+        <v-card-text>
+          <v-row>
+            <v-col cols="8">
+              <v-select dense solo filled :items="[{ itemName: 'Especial' }, { itemName: 'Pronto Pago' }]" v-model="tipoDescuento1" item-text="itemName" label="Tipo Descuento 1"></v-select>
+            </v-col>
+            <v-col cols="4">
+              <v-select dense v-model="descuento1" :items="porcentajeTipoDcto(tipoDescuento1)" @change="recalculateAll()"></v-select>
+            </v-col>
+            <v-col cols="8">
+              <v-select dense solo filled :items="[{ itemName: 'Especial' }, { itemName: 'Pronto Pago' }]" v-model="tipoDescuento2" item-text="itemName" label="Tipo Descuento 2"></v-select>
+            </v-col>
+            <v-col cols="4">
+              <v-select dense v-model="descuento2" :items="porcentajeTipoDcto(tipoDescuento2)" @change="recalculateAll()"></v-select>
+            </v-col>
+            <v-col cols="8">
+              <v-select dense solo filled :items="[{ itemName: 'Especial' }, { itemName: 'Pronto Pago' }]" v-model="tipoDescuento3" item-text="itemName" label="Tipo Descuento 3"></v-select>
+            </v-col>
+            <v-col cols="4">
+              <v-select dense v-model="descuento3" :items="porcentajeTipoDcto(tipoDescuento3)" @change="recalculateAll()"></v-select>
+            </v-col>
+            <v-col cols="8">
+              <v-select dense solo filled :items="[{ itemName: 'Especial' }, { itemName: 'Pronto Pago' }]" v-model="tipoDescuento4" item-text="itemName" label="Tipo Descuento 4"></v-select>
+            </v-col>
+            <v-col cols="4">
+              <v-select dense v-model="descuento4" :items="porcentajeTipoDcto(tipoDescuento4)" @change="recalculateAll()"></v-select>
+            </v-col>
+          </v-row>
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer></v-spacer>
+          <v-btn color="primary" block depressed class="rounded-lg" @click="showDiscounts = false">Aplicar a Selección</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+    <!-- Dialog -->
+    <v-dialog v-model="showdialog" persistent width="700">
+      <v-card>
+        <v-card-title class="headline grey lighten-2">
+          Resultado
+        </v-card-title>
+        <v-card-text>
+          <v-list subheader two-line>
+            <v-subheader inset>Archivos</v-subheader>
+
+            <v-list-item v-for="(file, index) in archivos" :key="index">
+              <v-list-item-avatar>
+                <v-icon class="grey lighten-1" dark>
+                  attachment
+                </v-icon>
+              </v-list-item-avatar>
+
+              <v-list-item-content>
+                <v-list-item-title v-text="file"></v-list-item-title>
+              </v-list-item-content>
+
+              <v-list-item-action>
+                <v-btn icon :href="'ftp://192.168.1.206/' + file" target="_blank">
+                  <v-icon color="grey lighten-1">information</v-icon>
+                </v-btn>
+              </v-list-item-action>
+            </v-list-item>
+          </v-list>
+        </v-card-text>
+        <v-card-actions>
+          <v-btn text color="primary" @click="showdialog = false">Cerrar</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+    <v-dialog v-model="showdialogCta" persistent width="800">
+      <v-card>
+        <v-card-title class="headline grey lighten-2">
+          Seleccionar cuenta
+        </v-card-title>
+        <v-card-text>
+          <v-data-table :items="pagosCta" :items-per-page="10" :search="searchCta" :headers="[
+            { text: 'Valor', value: 'credAmnt' },
+            { text: 'Fecha', value: 'dueDate' },
+            { text: 'Referencia', value: 'referencia' },
+          ]" class="elevation-1" item-key="sequence" disable-sort fixed-header single-select show-select every-item
+            @item-selected="({ item }) => {
+              this.selectedPagoCta = item;
+              this.showdialogCta = false;
+            }
+            ">
+            <template v-slot:top>
+              <v-banner sticky icon="search" flat>
+                <v-text-field v-model="searchCta" label="Buscar transferencia" class="mx-4"></v-text-field>
+              </v-banner>
+            </template>
+            <template v-slot:[`item.credAmnt`]="{ item }">
+              <span> {{ item.credAmnt | currency }} </span>
+            </template>
+            <template v-slot:[`item.dueDate`]="{ item }">
+              <span> {{ item.dueDate | textcrop2(10) }} </span>
+            </template>
+          </v-data-table>
+        </v-card-text>
+        <v-card-actions>
+          <v-btn text color="primary" @click="showdialogCta = false">Cerrar</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <v-overlay style="text-align: center" :value="overlay">
+      <p>Generando dispersion de pagos</p>
+      <v-progress-circular indeterminate size="64"></v-progress-circular>
+    </v-overlay>
+    <v-overlay style="text-align: center" :z-index="zIndex" :value="showResult">
+      <p>{{ Respuesta }}</p>
+      <v-btn depressed color="primary" @click="showResult = false">
+        Aceptar
+      </v-btn>
+    </v-overlay>
+  </v-container>
+</template>
+
+<script>
+import moment from "moment";
+import Vue from "vue";
+import { mapActions, mapState } from "vuex";
+import xlsx from "xlsx";
+import { mixin } from "../../mixin";
+//const setClass = new Set()
+export default {
+  name: "Pagos",
+  data: () => ({
+    archivos: [],
+    Respuesta: "",
+    dialog: false,
+    value: false,
+    showDiscounts: false,
+    timbrarPago: true,
+    pagoaCuenta: false,
+    useSaldoFavor: false,
+    dialogDelete: false,
+    pagoaCuentaValue: 0,
+    saldoFavorCliente: 0,
+    saldoFavorValue: 0,
+    editedIndex: -1,
+    search: "",
+    searchCta: "",
+    selected: [],
+    items: [],
+    selectedToFile: [],
+    selectedSociedad: null,
+    selectedSucursal: null,
+    selectedCuenta: null,
+    selectedCustomer: null,
+    selectedPagoCta: null,
+    selectedFormaPago: null,
+    loadSucural: false,
+    loadRest: false,
+    loadTable: false,
+    overlay: false,
+    isGenerate: true,
+    zIndex: 0,
+    headers: [
+      { text: "Folio", value: "docNum" },
+      { text: "Saldo Pendiente", value: "saldoVencido", align: "right" },
+      { text: "Vencimiento", value: "docDate", align: "right" },
+      { text: "Add", value: "actions" },
+    ],
+    headers2: [
+      { text: "", value: "actions" },
+      { text: "Factura", value: "docNum" },
+      { text: "Vencimiento", value: "docDate" },
+      { text: "Saldo Pendiente", value: "saldoVencido" },
+      { text: "Monto a Pagar", value: "rebajesoDevoluciones" },
+      { text: "Dcto. 1", value: "descuento1", width: "100px" },
+      { text: "Total dcto. 1", value: "total1" },
+      { text: "Dcto. 2", value: "descuento2", width: "100px" },
+      { text: "Total dcto. 2", value: "total2" },
+      { text: "Dcto. 3", value: "descuento3", width: "100px" },
+      { text: "Total dcto. 3", value: "total3" },
+      { text: "Dcto. 4", value: "descuento4", width: "100px" },
+      { text: "Total dcto. 4", value: "total4" },
+      { text: "Total del pago", value: "total" },
+    ],
+    showdialog: false,
+    showdialogCta: false,
+    showResult: false,
+    selectedFile: undefined,
+    fecha: moment().format("YYYY-MM-DD"),
+    fechaPago: moment().format("YYYY-MM-DD"),
+    descuento1: 0,
+    descuento2: 0,
+    descuento3: 0,
+    descuento4: 0,
+    tipoDescuento1: null,
+    tipoDescuento2: null,
+    tipoDescuento3: null,
+    tipoDescuento4: null,
+    formasPagos: [
+      { fidValue: '01', descr: 'Efectivo' },
+      { fidValue: '02', descr: 'Cheque nominativo' },
+      { fidValue: '03', descr: 'Transferencia electrónica de fondos' },
+      { fidValue: '04', descr: 'Tarjeta de crédito' },
+      { fidValue: '28', descr: 'Tarjeta de débito' },
+      { fidValue: '99', descr: 'Por definir' },
+    ],
+    folioPagoConsulta: null,
+  }),
+  mixins: [mixin],
+  watch: {
+    dialog (val) {
+      val || this.close();
+    },
+    dialogDelete (val) {
+      val || this.closeDelete();
+    },
+  },
+  methods: {
+    ...mapActions("dispersion", [
+      "getSucursales",
+      "getSociedades",
+      "getCuentas",
+      "limpiar",
+    ]),
+    ...mapActions("credito", [
+      "updateAutorizacionPreaplicaciones",
+      "getCustomers",
+      "getPagosCta",
+      "getPendingBill",
+      "getSaldoFavor",
+      "getTypeDiscounts",
+      "insertarPago",
+      "limpiarCredito",
+      "deleteItemPending",
+      "addItemPending",
+      "getPagoByFolio",
+      "deletePagoByFolio",
+    ]),
+    getSociedadText (item) {
+      return `${item.code} - ${item.u_CompnyName}`;
+    },
+    getSucursalText (item) {
+      return `${item.bplName} - ${item.bplFrName}`;
+    },
+    getOperacionText (item) {
+      return `${item.d} - ${item.n}`;
+    },
+    getCuentaText (item) {
+      return `${item.glAccount} - ${item.acctName}`;
+    },
+    getCustomerText (item) {
+      return `${item.cardCode} - ${item.cardName}`;
+    },
+    getPagoCtaText (item) {
+      return `${Vue.filter("currency")(item.credAmnt)} - ${item.referencia}`;
+    },
+    eventHandle (item, e) {
+      console.log(e);
+      console.log(item);
+
+      $(this).prop('title', 'Click para agregar')
+    },
+    cargarDatos (sociedad) {
+      this.loadSucural = true;
+      this.getSucursales(sociedad.u_DB).then((res) => {
+        this.loadSucural = false;
+      });
+      // this.getTypeDiscounts({
+      //   sociedad: sociedad.u_DB,
+      // }).then(() => {});
+    },
+    cargarDatos2 (sucursal) {
+      this.loadRest = true;
+      this.getCuentas({
+        sociedad: this.selectedSociedad.u_DB,
+        sucursal: sucursal.bplName,
+      }).then((res) => {
+        this.loadRest = false;
+      });
+      this.getCustomers({
+        sociedad: this.selectedSociedad.u_DB,
+        sucursal: sucursal.bplFrName,
+      }).then((res) => {
+        this.loadRest = false;
+      });
+    },
+    cargarDatos3 (cuenta) {
+      this.getPagosCta({
+        sociedad: this.selectedSociedad.u_DB,
+        cuenta: cuenta.glAccount,
+      }).then((res) => { });
+    },
+    cargarDatos4 (cliente) {
+      this.loadTable = true;
+      this.getPendingBill({
+        sociedad: this.selectedSociedad.u_DB,
+        sucursal: this.selectedSucursal.bplFrName,
+        cliente: cliente.cardCode,
+      }).then((res) => {
+        this.loadTable = false;
+      });
+      this.getSaldoFavor({
+        cliente: cliente.cardCode,
+      }).then((res) => {
+        this.saldoFavorCliente = res.data;
+      });
+    },
+    handlerEvent (e) {
+      if (this.$refs.table._data.internalCurrentItems.length > 0) {
+        this.selectedToFile.push(
+          this.$refs.table._data.internalCurrentItems[0]
+        );
+        this.selectedToFile = [...new Set(this.selectedToFile)];
+        this.search = "";
+      } else alert("Tranferencia no encontrada, intente de nuevo.");
+    },
+    addItem (item) {
+      // item.descuento1 = item.descuento1 || this.descuento1;
+      // item.descuento2 = item.descuento2 || this.descuento2;
+      // item.descuento3 = item.descuento3 || this.descuento3;
+      // item.descuento4 = item.descuento4 || this.descuento4;
+      item.rebajesoDevoluciones = item.rebajesoDevoluciones ?? item.saldoVencido;
+      this.recalculate(item);
+      this.selectedToFile.push(item);
+      this.selectedToFile = [...new Set(this.selectedToFile)];
+      this.deleteItemPending(item)
+    },
+    vModelValue (val) {
+      return val > 0
+    },
+    itemCheckHandle (val, item, key) {
+      if (val && val === true)
+        item[key] = this[key]
+      else
+        item[key] = 0
+
+      this.recalculate(item)
+    },
+    deleteAll () {
+      this.selectedToFile = []
+      this.cargarDatos4(this.selectedCustomer)
+    },
+    deleteItem (item) {
+      this.editedIndex = this.selectedToFile.indexOf(item);
+      this.dialogDelete = true;
+    },
+    deleteItemConfirm () {
+      this.addItemPending(this.selectedToFile[this.editedIndex])
+      this.selectedToFile.splice(this.editedIndex, 1);
+      this.closeDelete();
+    },
+    resolveExcel () {
+      if (this.pendingBills.length === 0) {
+        alert("Debe cargar las facturas pendientes antes de continuar")
+        return;
+      }
+      this.rows.forEach(f => {
+        const item = this.pendingBills.find(p => Number.parseInt(p.docNum) === f.Folio)
+        item.rebajesoDevoluciones = f.ValorAplicar
+        this.addItem(item)
+      })
+
+    },
+    recalculate (item) {
+      item.total1 =
+        item.rebajesoDevoluciones -
+        (+item.rebajesoDevoluciones * item.descuento1) / 100;
+      item.total2 = item.total1 - (item.total1 * item.descuento2) / 100;
+      item.total3 = item.total2 - (item.total2 * item.descuento3) / 100;
+      item.total4 = item.total3 - (item.total3 * item.descuento4) / 100;
+      item.total = item.total4;
+    },
+    recalculateAll () {
+      this.selectedToFile.forEach(this.recalculate);
+    },
+    closeDelete () {
+      this.dialogDelete = false;
+      this.$nextTick(() => {
+        this.editedIndex = -1;
+      });
+    },
+    async guardarPago (tipoOp) {
+      try {
+        let user = this.userName;
+        const totalAPagar = this.getTotal.toFixed(2);
+        const totalPorPagar = (this.selectedPagoCta?.credAmnt || 0).toFixed(2);
+        if (!this.value && Number.parseFloat(totalPorPagar) < Number.parseFloat(totalAPagar)) {
+          alert("El saldo sobrepasa el valor de la cuenta");
+          return;
+        }
+        await this.borrarPagoPorFolio()
+        const pago = {
+          fecha: this.fecha,
+          fechaPago: this.fechaPago,
+          sociedad: this.selectedSociedad.u_DB,
+          sucursal: this.selectedSucursal.bplFrName,
+          bplId: this.selectedSucursal.bplId,
+          idCuenta: this.selectedCuenta.glAccount,
+          cuenta: this.selectedCuenta.acctName,
+          cardCode: this.selectedCustomer.cardCode,
+          cardName: this.selectedCustomer.cardName,
+          monto: this.selectedPagoCta?.credAmnt || 0,
+          referencia: this.selectedPagoCta?.referencia || '',
+          idEdoCta: this.selectedPagoCta?.sequence || 0,
+          descuento1: this.tipoDescuento1 || "",
+          porcDesc1: this.descuento1,
+          descuento2: this.tipoDescuento2 || "",
+          porcDesc2: this.descuento2,
+          descuento3: this.tipoDescuento3 || "",
+          porcDesc3: this.descuento3,
+          descuento4: this.tipoDescuento4 || "",
+          porcDesc4: this.descuento4,
+          totalAPagar,
+          estatus: "",
+          comentarios: "",
+          tipoOp,
+          usuario: user,
+          fidValue: this.selectedFormaPago.fidValue,
+          detalles: this.selectedToFile.map((detalle, index) => {
+            return {
+              docEntry: detalle.docEntry,
+              docNum: detalle.docNum,
+              saldoVencido: detalle.saldoVencido,
+              rebjDev: detalle.rebajesoDevoluciones,
+              montoDcto1:
+                (+detalle.rebajesoDevoluciones * detalle.descuento1) / 100,
+              tDcto1: detalle.total1,
+              montoDcto2: (detalle.total1 * detalle.descuento2) / 100,
+              tDcto2: detalle.total2,
+              montoDcto3: (detalle.total2 * detalle.descuento3) / 100,
+              tDcto3: detalle.total3,
+              montoDcto4: (detalle.total3 * detalle.descuento4) / 100,
+              tDcto4: detalle.total4,
+              totalPago: detalle.total4,
+              manual: +this.value,
+              tipo: "",
+              estatus: "",
+              comentarios: "",
+              uuid: detalle.uuid,
+              transId: detalle.transId
+            };
+          }),
+        };
+
+        try {
+          const result = await this.insertarPago(pago);
+          console.log("Pago insertado con éxito:", result);
+          alert("Pago insertado con éxito");
+          this.cancelProcess();
+        } catch (e) {
+          console.error("Error al insertar pago:", e);
+          alert("Error al insertar pago");
+        }
+      } catch (error) {
+        alert("Debe seleccionar todas las opciones");
+      }
+    },
+    cancelProcess () {
+      this.search = "";
+      this.selectedToFile = [];
+      this.limpiar();
+      this.limpiarCredito();
+    },
+    async autorizarPago () {
+      if (!this.folioPagoConsulta) {
+        alert("Ingrese un folio de pago");
+        return;
+      }
+      this.overlay = true;
+      try {
+        await this.updateAutorizacionPreaplicaciones(this.folioPagoConsulta);
+        alert("Pago autorizado con éxito");
+        this.cancelarPago();
+      } catch (e) {
+        alert("Error al autorizar el pago: " + e.message);
+      } finally {
+        this.overlay = false;
+      }
+    },
+    cancelarPago () {
+      this.limpiar();
+      this.limpiarCredito();
+      this.$store.commit("credito/SET_PAGO", null); // Limpiar pago anterior
+      this.$store.commit("credito/SET_ERROR", null); // Limpiar error
+      this.folioPagoConsulta = null;
+      this.$router.push({ name: "AutorizacionPreaplicaciones" });
+    },
+    onFileChange (event) {
+      if (!this.selectedFile) {
+        this.rows = [];
+        return;
+      }
+      if (!/\.(xls|xlsx)$/.test(this.selectedFile.name.toLowerCase())) {
+        return alert(
+          "The upload format is incorrect. Please upload xls or xlsx format"
+        );
+      }
+      const fileReader = new FileReader();
+      fileReader.onload = (ev) => {
+        try {
+          const data = ev.target.result;
+          const XLSX = xlsx;
+          const workbook = XLSX.read(data, {
+            type: "binary",
+          });
+          const wsname = workbook.SheetNames[0]; // Take the first sheet，wb.SheetNames[0] :Take the name of the first sheet in the sheets
+          const ws = XLSX.utils.sheet_to_json(workbook.Sheets[wsname]); // Generate JSON table content，wb.Sheets[Sheet名]    Get the data of the first sheet
+
+          const a = workbook.Sheets[workbook.SheetNames[0]];
+          const headers = this.getHeader(a);
+          this.setTable(headers, ws);
+          this.resolveExcel()
+        } catch (e) {
+          return alert("Read failure!");
+        }
+      };
+      fileReader.readAsBinaryString(this.selectedFile);
+    },
+    porcentajeTipoDcto (tipoDescuento) {
+      return tipoDescuento == "Especial"
+        ? [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 20, 30, 40]
+        : [1, 2, 3];
+    },
+    async consultarPagoPorFolio () {
+      if (!this.folioPagoConsulta) {
+        alert("Ingrese un folio de pago");
+        return;
+      }
+      try {
+        this.overlay = true;
+        const pago = await this.getPagoByFolio(this.folioPagoConsulta);
+        this.overlay = false;
+        if (pago) {
+          await this.cargarPagoEnFormulario(pago);
+        }
+      } catch (e) {
+        this.overlay = false;
+        alert("No se encontró el pago o hubo un error");
+      }
+    },
+    async cargarPagoEnFormulario (pago) {
+      // 1. Sociedad
+      const sociedad = this.sociedades.find(s => s.u_DB === pago.sociedad || s.u_DB === pago.sociedad?.u_DB);
+      if (!sociedad) return alert('No se encontró la sociedad del pago');
+      this.selectedSociedad = sociedad;
+      await this.getSucursales(sociedad.u_DB);
+      // 2. Sucursal
+      const sucursal = this.sucursales.find(s => s.bplFrName === pago.sucursal || s.bplName === pago.sucursal);
+      if (!sucursal) return alert('No se encontró la sucursal del pago');
+      this.selectedSucursal = sucursal;
+      await this.getCuentas({ sociedad: sociedad.u_DB, sucursal: sucursal.bplName });
+      // 3. Cuenta Bancaria
+      const cuenta = this.cuentas.find(c => c.glAccount === pago.idCuenta || c.acctName === pago.cuenta);
+      if (!cuenta) return alert('No se encontró la cuenta bancaria del pago');
+      this.selectedCuenta = cuenta;
+      await this.getCustomers({ sociedad: sociedad.u_DB, sucursal: sucursal.bplFrName });
+      // 4. Cliente
+      const cliente = this.customers.find(c => c.cardCode === pago.cardCode);
+      if (!cliente) return alert('No se encontró el cliente del pago');
+      this.selectedCustomer = cliente;
+      await this.getPagosCta({ sociedad: sociedad.u_DB, cuenta: cuenta.glAccount });
+      // 5. Pago edo. Cta
+      this.value = !!pago.detalles[0].manual
+      if (pago.idEdoCta == null || pago.idEdoCta == 0 || this.value) {
+        this.selectedPagoCta = null;
+      } else {
+        let pagoCta = this.pagosCta.find(p =>
+    // 1. Buscamos por ID (lo más seguro)
+    p.sequence === pago.idEdoCta ||
+    // 2. O por referencia, PERO solo si la referencia del pago NO es nula/falsy
+    (pago.referencia && p.referencia === pago.referencia)
+);
+        if (pagoCta) {
+          this.selectedPagoCta = pagoCta;
+        } else {
+          // Si no se encuentra, crear un objeto con los valores que hacen match y los demás en null
+          const match = this.pagosCta.find(p => p.referencia === pago.referencia || p.credAmnt === pago.monto);
+          this.selectedPagoCta = match
+            ? { ...match, sequence: pago.idEdoCta || null }
+            : {
+              sequence: pago.idEdoCta || null,
+              referencia: pago.referencia || null,
+              credAmnt: pago.monto || null,
+              dueDate: pago.fechaPago || null,
+              // Otros campos en null
+            };
+        }
+      }
+
+      this.cargarDatos4(this.selectedCustomer)
+      // Otros campos simples
+      this.fecha = pago.fecha.substring(0, 10);
+      this.fechaPago = pago.fechaPago.substring(0, 10);
+      this.selectedFormaPago = this.formasPagos.find(f => f.fidValue === pago.fidValue) || null;
+      this.tipoDescuento1 = pago.descuento1 || null;
+      this.tipoDescuento2 = pago.descuento2 || null;
+      this.tipoDescuento3 = pago.descuento3 || null;
+      this.tipoDescuento4 = pago.descuento4 || null;
+      this.descuento1 = pago.porcDesc1 || 0;
+      this.descuento2 = pago.porcDesc2 || 0;
+      this.descuento3 = pago.porcDesc3 || 0;
+      this.descuento4 = pago.porcDesc4 || 0;
+      // Si hay detalles, puedes setearlos en selectedToFile si aplica
+      if (pago.detalles) {
+        this.value = !!pago.detalles[0].manual
+        pago.detalles.forEach(item => {
+          this.addItem({
+            docEntry: item.docEntry,
+            transId: item.transId,
+            docNum: item.docNum,
+            saldoVencido: item.saldoVencido,
+            rebajesoDevoluciones: item.rebjDev,
+            uuid: item.uuid,
+            docDate: moment().format("YYYY-MM-DD"),
+            descuento1: item.montoDcto1 > 0 ? pago.porcDesc1 : 0,
+            descuento2: item.montoDcto2 > 0 ? pago.porcDesc2 : 0,
+            descuento3: item.montoDcto3 > 0 ? pago.porcDesc3 : 0,
+            descuento4: item.montoDcto4 > 0 ? pago.porcDesc4 : 0,
+          })
+        });
+      }
+    },
+    async borrarPagoPorFolio () {
+      if (!this.folioPagoConsulta) {
+        try {
+          this.overlay = true;
+          await this.deletePagoByFolio(this.folioPagoConsulta);
+          this.folioPagoConsulta = null;
+          this.overlay = false;
+        } catch (e) {
+          this.overlay = false;
+        }
+      }
+    }
+  },
+  computed: {
+    tableHeight () {
+      return window.innerHeight - 440
+    },
+    pendingBills () {
+      return this.$store.state.credito.pendingBills.sort((a, b) => {
+        if (a.docNum > b.docNum) {
+          return 1;
+        }
+        return -1
+      });
+    },
+    getValuesFromSet () {
+      return this.selectedToFile.entries().next().value;
+    },
+    getTotal () {
+      return this.selectedToFile.reduce((a, b) => a + (b["total4"] || 0), 0) + (this.pagoaCuenta ? +this.pagoaCuentaValue : 0) - (this.useSaldoFavor ? +this.saldoFavorValue : 0);
+    },
+    sociedades () {
+      return this.$store.state.dispersion.sociedades;
+    },
+    sucursales () {
+      return this.$store.state.dispersion.sucursales;
+    },
+    cuentas () {
+      return this.$store.state.dispersion.cuentas;
+    },
+    customers () {
+      return this.$store.state.credito.customers;
+    },
+    pagosCta () {
+      return this.$store.state.credito.pagos;
+    },
+    typeDiscounts () {
+      return this.$store.state.credito.typeDiscounts;
+    },
+    rules () {
+      return [
+        (value) => {
+          if (this.tipoDescuento3 === "Especial") {
+            const parsedValue = parseFloat(value);
+            if (isNaN(parsedValue)) {
+              return "Input must be a number.";
+            }
+            if (parsedValue >= 1 && parsedValue <= 10) {
+              return true;
+            }
+            return `El rango para este tipo de descuentos es de ${1} y ${10}.`;
+          }
+        },
+        (value) => {
+          if (this.tipoDescuento3 === "Pronto Pago") {
+            const parsedValue = parseFloat(value);
+            if (isNaN(parsedValue)) {
+              return "Input must be a number.";
+            }
+            if (parsedValue <= 3) {
+              return true;
+            }
+            return `El máximo para este tipo de descuentos es de ${3}.`;
+          }
+        },
+      ];
+    },
+    ...mapState("credito", ["pago"]),
+    ...mapState("config", ["canCreate"]),
+    ...mapState("login", ["userName"]),
+  },
+  mounted () {
+    this.limpiar();
+    this.limpiarCredito();
+    this.getSociedades();
+    // Si hay folioPago en el estado, consultar automáticamente
+    if (this.pago && this.pago.folioPago) {
+      this.folioPagoConsulta = this.pago.folioPago;
+      this.consultarPagoPorFolio();
+      // Limpiar el folio temporal para evitar recarga accidental
+      this.$store.commit("credito/SET_PAGO", null);
+    }
+  },
+};
+</script>
+
+<style scoped>
+.payment-dashboard {
+  background: #f8fafc !important; 
+  min-height: 100vh;
+}
+.theme--dark .payment-dashboard { 
+  background: #0f172a !important; 
+}
+
+.glass-card {
+  background: rgba(255, 255, 255, 0.7) !important;
+  backdrop-filter: blur(12px) saturate(180%);
+  -webkit-backdrop-filter: blur(12px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.3) !important;
+  transition: all 0.3s ease;
+}
+
+.theme--dark .glass-card {
+  background: rgba(30,30,30, 0.6) !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+}
+
+.shadow-premium {
+  box-shadow: 0 10px 30px -10px rgba(0,0,0,0.1) !important;
+}
+
+.border-thin {
+  border: 1px solid rgba(0,0,0,0.05) !important;
+}
+
+.border-left-primary { border-left: 4px solid var(--v-primary-base) !important; }
+.border-left-success { border-left: 4px solid #4CAF50 !important; }
+.border-left-info { border-left: 4px solid #2196F3 !important; }
+
+.metric-card {
+  transition: transform 0.3s ease;
+}
+
+.metric-card:hover {
+  transform: translateY(-5px);
+}
+
+.glass-toolbar-inner {
+  background: rgba(248, 161, 2, 0.05) !important;
+  border-bottom: 1px solid rgba(0,0,0,0.05) !important;
+}
+
+/* Table Optimizations */
+.compact-table >>> .v-data-table__wrapper table,
+.detail-table >>> .v-data-table__wrapper table {
+  font-size: 0.825rem;
+}
+
+.compact-table >>> thead th,
+.detail-table >>> thead th {
+  background: #fdf5e6 !important;
+  color: var(--v-secondary-base) !important;
+  font-weight: 800 !important;
+  text-transform: uppercase;
+  font-size: 0.725rem;
+  letter-spacing: 0.5px;
+  padding-top: 4px !important;
+  padding-bottom: 4px !important;
+  height: auto !important;
+  z-index: 10 !important;
+}
+
+.theme--dark .compact-table >>> thead th,
+.theme--dark .detail-table >>> thead th {
+  background: #252525 !important;
+}
+
+.compact-table td, .detail-table td {
+  height: 40px !important;
+}
+
+.pointer {
+  cursor: pointer;
+}
+
+.pointer:hover {
+  background-color: var(--v-primary-base) !important;
+  color: white !important;
+}
+
+.brand-btn {
+  background: linear-gradient(135deg, #f8a102 0%, #ffc107 100%) !important;
+  color: white !important;
+  font-weight: bold !important;
+  border-radius: 8px !important;
+  text-transform: none !important;
+}
+
+.compact-field >>> .v-input__control {
+  min-height: 32px !important;
+}
+
+.compact-file-input >>> .v-input__control {
+  min-height: 40px !important;
+}
+
+.line-height-tight {
+  line-height: 1.2;
+}
+
+.blue-check >>> .v-icon {
+  color: #2196F3 !important;
+}
+
+.custom-date-field >>> .v-input__prepend-inner {
+  margin-top: 4px !important;
+}
+
+#tablemain >>> tbody tr {
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+#tablemain >>> tbody tr:hover {
+  background-color: rgba(248, 161, 2, 0.1) !important;
+}
+
+.theme--dark .brand-secondary--text {
+  color: rgba(255, 255, 255, 0.9) !important;
+}
+</style>
