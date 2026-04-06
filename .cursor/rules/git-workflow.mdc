@@ -1,0 +1,37 @@
+---
+description: Ramas y control de versiones para cada cambio
+alwaysApply: true
+---
+
+# Git: ramas y control de código
+
+## Antes de cambiar código
+
+- **No commitear directo en `main`** salvo hotfix acordado o merge ya revisado.
+- Crear una **rama desde `main` actualizado**:
+  - `feature/<tema-corto>` — nuevas funciones o refactors.
+  - `fix/<tema-corto>` — correcciones de bugs.
+  - `chore/<tema-corto>` — tooling, dependencias, sin cambio de comportamiento.
+  - `docs/<tema-corto>` — solo documentación si aplica.
+
+Ejemplos: `feature/login-validacion`, `fix/dispersion-timeout`.
+
+## Durante el trabajo
+
+- Commits **pequeños y con mensaje claro** (imperativo, qué hace el cambio).
+- Si el cambio toca **Dispersion** y **portal-govi**, mantener commits coherentes o separar por carpeta si ayuda al review.
+
+## Al terminar
+
+- **Push** de la rama al remoto: `git push -u origin <rama>`.
+- Abrir **PR/MR** hacia `main` (o merge local tras revisión interna).
+- Tras merge, borrar rama remota si ya no se usa.
+
+## Puntos de restauración
+
+- Para hitos estables usar **tags anotados** (`git tag -a v1.x -m "..."`) además de ramas.
+- La etiqueta `qa-funcional-2026-04-06` es un snapshot de referencia; nuevas etiquetas para nuevos hitos QA.
+
+## Rol del asistente
+
+- Al implementar cambios en este repo: **proponer o usar** una rama `feature/*` o `fix/*` en lugar de trabajar solo en `main`, y recordar push/PR cuando corresponda.
