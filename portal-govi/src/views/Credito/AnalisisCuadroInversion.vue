@@ -7,6 +7,15 @@
         Análisis <span class="font-weight-light grey--text">Cuadro de Inversión</span>
       </v-toolbar-title>
       <v-spacer></v-spacer>
+
+      <v-btn
+        class="brand-btn px-4 shadow-premium mr-2"
+        depressed
+        @click="abrirDialogCargarSaldos"
+      >
+        <v-icon left>mdi-scale-balance</v-icon>
+        Cargar Saldos
+      </v-btn>
       
       <div class="d-flex align-center">
         <export-excel
@@ -154,6 +163,132 @@
         </template>
       </v-data-table>
     </v-card>
+
+    <!-- Diálogo: parámetros para consultas de saldos -->
+    <v-dialog
+      v-model="dialogCargarSaldos"
+      max-width="720"
+      scrollable
+      content-class="dialog-cargar-saldos"
+    >
+      <v-card class="glass-card rounded-xl border-thin overflow-hidden dialog-saldos-card">
+        <v-toolbar flat dense class="glass-toolbar rounded-t-xl mb-0">
+          <v-icon color="primary" class="mr-2">mdi-database-search</v-icon>
+          <v-toolbar-title class="subtitle-1 font-weight-bold">
+            Datos para ejecutar consultas
+          </v-toolbar-title>
+          <v-spacer></v-spacer>
+          <v-btn icon class="glass-btn-icon" aria-label="Cerrar" @click="dialogCargarSaldos = false">
+            <v-icon>mdi-close</v-icon>
+          </v-btn>
+        </v-toolbar>
+
+        <v-card-text class="pt-4 px-5 pb-2">
+          <p class="text-caption grey--text text--darken-1 mb-4">
+            Indique las fechas para cada consulta. Al final pulse <strong>Obtener saldos</strong>.
+          </p>
+
+          <v-row dense align="center" class="saldos-form-row mb-3">
+            <v-col cols="12" sm="5" md="4" class="py-1">
+              <span class="body-2 font-weight-bold saldos-label">Saldo diario</span>
+            </v-col>
+            <v-col cols="12" sm="7" md="8" class="py-1">
+              <v-text-field
+                v-model="formSaldos.saldoDiario"
+                label="Fecha"
+                prepend-inner-icon="event"
+                type="date"
+                filled
+                dense
+                hide-details
+                class="rounded-lg"
+              />
+            </v-col>
+          </v-row>
+
+          <v-row dense align="center" class="saldos-form-row mb-3">
+            <v-col cols="12" sm="5" md="4" class="py-1">
+              <span class="body-2 font-weight-bold saldos-label">Saldo de transferencias</span>
+            </v-col>
+            <v-col cols="6" sm="3" md="4" class="py-1">
+              <v-text-field
+                v-model="formSaldos.transferenciasDesde"
+                label="Fecha inicial"
+                prepend-inner-icon="mdi-calendar-start"
+                type="date"
+                filled
+                dense
+                hide-details
+                class="rounded-lg"
+              />
+            </v-col>
+            <v-col cols="6" sm="4" md="4" class="py-1">
+              <v-text-field
+                v-model="formSaldos.transferenciasHasta"
+                label="Fecha final"
+                prepend-inner-icon="mdi-calendar-end"
+                type="date"
+                filled
+                dense
+                hide-details
+                class="rounded-lg"
+              />
+            </v-col>
+          </v-row>
+
+          <v-row dense align="center" class="saldos-form-row">
+            <v-col cols="12" sm="5" md="4" class="py-1">
+              <span class="body-2 font-weight-bold saldos-label">Saldo de depósitos</span>
+            </v-col>
+            <v-col cols="6" sm="3" md="4" class="py-1">
+              <v-text-field
+                v-model="formSaldos.depositosDesde"
+                label="Fecha inicial"
+                prepend-inner-icon="mdi-calendar-start"
+                type="date"
+                filled
+                dense
+                hide-details
+                class="rounded-lg"
+              />
+            </v-col>
+            <v-col cols="6" sm="4" md="4" class="py-1">
+              <v-text-field
+                v-model="formSaldos.depositosHasta"
+                label="Fecha final"
+                prepend-inner-icon="mdi-calendar-end"
+                type="date"
+                filled
+                dense
+                hide-details
+                class="rounded-lg"
+              />
+            </v-col>
+          </v-row>
+        </v-card-text>
+
+        <v-card-actions class="px-5 pb-5 pt-2">
+          <v-spacer></v-spacer>
+          <v-btn text class="mr-2" @click="dialogCargarSaldos = false">Cancelar</v-btn>
+          <v-btn
+            class="brand-btn px-6 shadow-premium"
+            depressed
+            :loading="loading"
+            @click="onObtenerSaldos"
+          >
+            <v-icon left>mdi-download-circle</v-icon>
+            Obtener saldos
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <v-snackbar v-model="snackbar" :color="snackbarColor" :timeout="4500" top>
+      {{ snackbarText }}
+      <template v-slot:action="{ attrs }">
+        <v-btn text v-bind="attrs" @click="snackbar = false">Cerrar</v-btn>
+      </template>
+    </v-snackbar>
   </v-container>
 </template>
 
@@ -170,6 +305,19 @@ export default {
     expanded: [],
     fecha: moment().format("YYYY-MM-DD"),
     tipoCambio: 0,
+    dialogCargarSaldos: false,
+    formSaldos: {
+      saldoDiario: "",
+      transferenciasDesde: "",
+      transferenciasHasta: "",
+      depositosDesde: "",
+      depositosHasta: "",
+    },
+    /** Parámetros confirmados en el diálogo (p. ej. futuras llamadas API por rango). */
+    parametrosConsultaSaldos: null,
+    snackbar: false,
+    snackbarText: "",
+    snackbarColor: "success",
     items: [],
     filters: {
       almacen: "",
@@ -236,13 +384,16 @@ export default {
 
     async getReportHeaderMethodCuadroInversion() {
       this.loading = true;
+      let ok = false;
       try {
-          this.items = await this.getReportHeaderCuadroInversion(this.fecha);
+        this.items = await this.getReportHeaderCuadroInversion(this.fecha);
+        ok = true;
       } catch (e) {
-          console.error(e);
+        console.error(e);
       } finally {
-          this.loading = false;
+        this.loading = false;
       }
+      return ok;
     },
     async onItemExpanded({ item, value }) {
       if (value) {
@@ -257,6 +408,68 @@ export default {
         return;
       }
       this.itemsDetails = [];
+    },
+
+    inicializarFormSaldos() {
+      const d = this.fecha || moment().format("YYYY-MM-DD");
+      this.formSaldos = {
+        saldoDiario: d,
+        transferenciasDesde: d,
+        transferenciasHasta: d,
+        depositosDesde: d,
+        depositosHasta: d,
+      };
+    },
+
+    abrirDialogCargarSaldos() {
+      this.inicializarFormSaldos();
+      this.dialogCargarSaldos = true;
+    },
+
+    mostrarSnackbar(text, color = "success") {
+      this.snackbarText = text;
+      this.snackbarColor = color;
+      this.snackbar = true;
+    },
+
+    validarRangoFechas(desde, hasta, etiqueta) {
+      if (!desde || !hasta) {
+        this.mostrarSnackbar(`Complete las fechas de ${etiqueta}.`, "error");
+        return false;
+      }
+      if (moment(desde).isAfter(moment(hasta))) {
+        this.mostrarSnackbar(`En ${etiqueta}, la fecha inicial no puede ser posterior a la final.`, "error");
+        return false;
+      }
+      return true;
+    },
+
+    async onObtenerSaldos() {
+      const f = this.formSaldos;
+      if (!f.saldoDiario) {
+        this.mostrarSnackbar("Indique la fecha de saldo diario.", "error");
+        return;
+      }
+      if (!this.validarRangoFechas(f.transferenciasDesde, f.transferenciasHasta, "saldo de transferencias")) {
+        return;
+      }
+      if (!this.validarRangoFechas(f.depositosDesde, f.depositosHasta, "saldo de depósitos")) {
+        return;
+      }
+
+      this.parametrosConsultaSaldos = { ...f };
+      this.fecha = f.saldoDiario;
+      this.dialogCargarSaldos = false;
+
+      const ok = await this.getReportHeaderMethodCuadroInversion();
+      if (ok) {
+        this.mostrarSnackbar(
+          "Parámetros guardados y tabla actualizada con la fecha de saldo diario.",
+          "success"
+        );
+      } else {
+        this.mostrarSnackbar("No se pudo cargar el informe. Revise la consola o el servidor.", "error");
+      }
     },
   },
   mounted() {
@@ -441,5 +654,26 @@ export default {
 
 .line-height-tight {
   line-height: 1.2;
+}
+
+.saldos-form-row .saldos-label {
+  display: block;
+  line-height: 1.35;
+  color: rgba(0, 0, 0, 0.75);
+}
+
+.theme--dark .saldos-form-row .saldos-label {
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.dialog-saldos-card {
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.18) !important;
+}
+</style>
+
+<style lang="css">
+/* v-dialog content se renderiza fuera del scope del componente */
+.dialog-cargar-saldos {
+  border-radius: 16px !important;
 }
 </style>
