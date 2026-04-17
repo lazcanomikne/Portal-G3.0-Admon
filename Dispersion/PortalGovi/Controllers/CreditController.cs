@@ -1,6 +1,7 @@
 ﻿using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Configuration;
 using PortalGovi.DataProvider;
+using PortalGovi.Models.Credito;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -133,6 +134,29 @@ namespace PortalGovi.Controllers
         {
             operacion = Request.Query["cuenta"];
             return Ok(_creditManager.GetResporDetails(folio: operacion).GetAwaiter().GetResult());
+        }
+
+        /// <summary>
+        /// Carga saldos (HANA → DISPERSION) y regenera Tesoreria_HistoricoAnalisisSaldoDiario para la fecha PET del saldo diario.
+        /// </summary>
+        [HttpPost("report/cuadroinversion/cargar-saldos")]
+        public async Task<IActionResult> PostCargarSaldosCuadroInversion([FromBody] CargarSaldosCuadroRequest body)
+        {
+            if (body == null)
+                return BadRequest(new { message = "Cuerpo de solicitud vacío." });
+            try
+            {
+                await _creditManager.ExecuteCargarSaldosCuadroInversionAsync(body).ConfigureAwait(false);
+                return Ok(new { message = "Proceso de carga de saldos completado." });
+            }
+            catch (ArgumentException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { message = ex.Message, detail = ex.InnerException?.Message });
+            }
         }
 
     }

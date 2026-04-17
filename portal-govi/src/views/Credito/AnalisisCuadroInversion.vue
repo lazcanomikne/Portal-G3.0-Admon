@@ -376,7 +376,11 @@ export default {
     }
   },
   methods: {
-    ...mapActions("credito", ["getReportHeaderCuadroInversion", "getReportDetailCuadroInversion"]),
+    ...mapActions("credito", [
+      "getReportHeaderCuadroInversion",
+      "getReportDetailCuadroInversion",
+      "cargarSaldosCuadroInversion",
+    ]),
     
     getColor(val) {
         return val < 0 ? 'red--text font-weight-bold' : '';
@@ -444,6 +448,14 @@ export default {
       return true;
     },
 
+    /** Misma regla que el backend: día siguiente; si es viernes → lunes. */
+    computeFechaPetIso(isoDateStr) {
+      const m = moment(isoDateStr, "YYYY-MM-DD");
+      if (!m.isValid()) return isoDateStr;
+      if (m.day() === 5) return m.clone().add(3, "days").format("YYYY-MM-DD");
+      return m.clone().add(1, "day").format("YYYY-MM-DD");
+    },
+
     async onObtenerSaldos() {
       const f = this.formSaldos;
       if (!f.saldoDiario) {
@@ -457,18 +469,42 @@ export default {
         return;
       }
 
-      this.parametrosConsultaSaldos = { ...f };
-      this.fecha = f.saldoDiario;
-      this.dialogCargarSaldos = false;
+      this.loading = true;
+      try {
+        await this.cargarSaldosCuadroInversion({
+          saldoDiario: f.saldoDiario,
+          transferenciasDesde: f.transferenciasDesde,
+          transferenciasHasta: f.transferenciasHasta,
+          depositosDesde: f.depositosDesde,
+          depositosHasta: f.depositosHasta,
+        });
+        this.parametrosConsultaSaldos = { ...f };
+        /* El informe lee FechaSD = Fecha PET del saldo diario */
+        this.fecha = this.computeFechaPetIso(f.saldoDiario);
+        this.dialogCargarSaldos = false;
 
-      const ok = await this.getReportHeaderMethodCuadroInversion();
-      if (ok) {
-        this.mostrarSnackbar(
-          "Parámetros guardados y tabla actualizada con la fecha de saldo diario.",
-          "success"
-        );
-      } else {
-        this.mostrarSnackbar("No se pudo cargar el informe. Revise la consola o el servidor.", "error");
+        const ok = await this.getReportHeaderMethodCuadroInversion();
+        if (ok) {
+          this.mostrarSnackbar(
+            "Saldos ejecutados en SQL y tabla actualizada (fecha de corte = Fecha PET).",
+            "success"
+          );
+        } else {
+          this.mostrarSnackbar(
+            "Saldos ejecutados, pero no se pudo refrescar la tabla. Use el botón de actualizar.",
+            "warning"
+          );
+        }
+      } catch (e) {
+        console.error(e);
+        const d = e.response && e.response.data;
+        const msg =
+          (d && (d.message || d.detail || (typeof d === "string" ? d : null))) ||
+          e.message ||
+          "Error al ejecutar la carga de saldos.";
+        this.mostrarSnackbar(String(msg), "error");
+      } finally {
+        this.loading = false;
       }
     },
   },

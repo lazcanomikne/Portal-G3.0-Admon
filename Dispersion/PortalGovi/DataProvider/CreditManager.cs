@@ -2,10 +2,12 @@
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.Extensions.Configuration;
 using PortalGovi.Models;
+using PortalGovi.Models.Credito;
 using Sap.Data.Hana;
 using SAPbobsCOM;
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Data;
 using System.Data.SqlClient;
 using System.Linq;
@@ -406,6 +408,30 @@ namespace PortalGovi.DataProvider
                 transaction.Rollback();
                 throw;
             }
+        }
+
+        /// <summary>
+        /// Ejecuta saldo diario, transferencias, depósitos e histórico de análisis (OPENQUERY HANA + tablas DISPERSION).
+        /// </summary>
+        public async Task ExecuteCargarSaldosCuadroInversionAsync(CargarSaldosCuadroRequest request)
+        {
+            static DateTime ParseIso(string s, string name)
+            {
+                if (string.IsNullOrWhiteSpace(s) ||
+                    !DateTime.TryParseExact(s.Trim(), "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var d))
+                    throw new ArgumentException($"La fecha '{name}' no es válida (use yyyy-MM-dd).");
+                return d.Date;
+            }
+
+            var saldoDiario = ParseIso(request.SaldoDiario, nameof(request.SaldoDiario));
+            var transDesde = ParseIso(request.TransferenciasDesde, nameof(request.TransferenciasDesde));
+            var transHasta = ParseIso(request.TransferenciasHasta, nameof(request.TransferenciasHasta));
+            var depDesde = ParseIso(request.DepositosDesde, nameof(request.DepositosDesde));
+            var depHasta = ParseIso(request.DepositosHasta, nameof(request.DepositosHasta));
+
+            using var connection = new SqlConnection(SqlConectionString);
+            await connection.OpenAsync().ConfigureAwait(false);
+            await TesoreriaCargarSaldosExecutor.ExecuteAllAsync(connection, saldoDiario, transDesde, transHasta, depDesde, depHasta).ConfigureAwait(false);
         }
 
     }

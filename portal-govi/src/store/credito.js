@@ -187,6 +187,19 @@ const Credito = {
         throw error;
       }
     },
+    /** Saldo diario + transferencias + depósitos + histórico (SQL Server / HANA). */
+    async cargarSaldosCuadroInversion({ commit }, payload) {
+      try {
+        await axiosInstance.post(
+          "/api/credit/report/cuadroinversion/cargar-saldos",
+          payload
+        );
+        return true;
+      } catch (error) {
+        commit("SET_ERROR", error.response?.data || error.message);
+        throw error;
+      }
+    },
     async getAutorizacionPreaplicaciones({ commit }) {
       try {
         const response = await axiosInstance.get(
