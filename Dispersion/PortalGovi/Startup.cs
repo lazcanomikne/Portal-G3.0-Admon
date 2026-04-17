@@ -85,6 +85,8 @@ namespace PortalGovi
 
             app.UseEndpoints(endpoints =>
             {
+                /* Rutas por atributo ([Route], [HttpPost], etc.) — Credit, Users, Investment, … */
+                endpoints.MapControllers();
                 endpoints.MapControllerRoute(
                     name: "default",
                     pattern: "{controller=Home}/{action=Index}/{id?}");
